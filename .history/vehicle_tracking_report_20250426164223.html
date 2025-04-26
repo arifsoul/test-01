@@ -1,0 +1,69 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle Tracking Analysis Report</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.15.0/Recharts.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style> body { font-family: Arial; } .chart-container { margin:20px 0; } </style>
+</head>
+<body class="bg-gray-100 p-6">
+    <div id="root"></div>
+    <script>
+        const typeChartData = [{"count": 53154, "type": "Parking"}, {"count": 49892, "type": "Trip"}];
+        const locationChartData = [{"count": 6324, "location": "PT_2GHTI26CT2"}, {"count": 5496, "location": "PT_JSJ919"}, {"count": 3524, "location": "MILL"}, {"count": 3101, "location": "PT_2GHTI23CT4"}, {"count": 2512, "location": "DLJ2_NP0_U09FC6"}];
+        const clusterChartData = [{"cluster": "0", "count": 16343}, {"cluster": "1", "count": 15705}, {"cluster": "2", "count": 7}, {"cluster": "3", "count": 12910}, {"cluster": "4", "count": 16148}, {"cluster": "5", "count": 10526}, {"cluster": "6", "count": 15815}, {"cluster": "7", "count": 14614}, {"cluster": "8", "count": 53}, {"cluster": "9", "count": 137}, {"cluster": "10", "count": 6}, {"cluster": "11", "count": 15}, {"cluster": "12", "count": 5}, {"cluster": "13", "count": 8}, {"cluster": "14", "count": 6}, {"cluster": "15", "count": 9}, {"cluster": "16", "count": 10}, {"cluster": "17", "count": 5}, {"cluster": "18", "count": 7}, {"cluster": "19", "count": 7}, {"cluster": "20", "count": 5}, {"cluster": "21", "count": 9}, {"cluster": "22", "count": 8}, {"cluster": "23", "count": 6}, {"cluster": "41", "count": 5}, {"cluster": "24", "count": 20}, {"cluster": "27", "count": 6}, {"cluster": "33", "count": 5}, {"cluster": "25", "count": 5}, {"cluster": "26", "count": 7}, {"cluster": "34", "count": 6}, {"cluster": "32", "count": 5}, {"cluster": "28", "count": 7}, {"cluster": "36", "count": 7}, {"cluster": "29", "count": 15}, {"cluster": "31", "count": 4}, {"cluster": "30", "count": 6}, {"cluster": "40", "count": 5}, {"cluster": "35", "count": 6}, {"cluster": "37", "count": 8}, {"cluster": "38", "count": 6}, {"cluster": "39", "count": 7}];
+        const App = () => (
+            <div className="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-md">
+                <h1 className="text-3xl font-bold mb-4">Vehicle Tracking Analysis Report</h1>
+                <div className="chart-container">
+                    <h2 className="text-2xl font-semibold mb-2">Event Type Distribution</h2>
+                    <Recharts.ResponsiveContainer width="100%" height={300}>
+                        <Recharts.BarChart data={typeChartData}>
+                            <Recharts.CartesianGrid strokeDasharray="3 3" />
+                            <Recharts.XAxis dataKey="type" label={ value: 'Event Type', position: 'insideBottom', offset: -5 } />
+                            <Recharts.YAxis label={ value: 'Count', angle: -90, position: 'insideLeft' } />
+                            <Recharts.Tooltip />
+                            <Recharts.Legend />
+                            <Recharts.Bar dataKey="count" fill="#8884d8" />
+                        </Recharts.BarChart>
+                    </Recharts.ResponsiveContainer>
+                </div>
+                <div className="chart-container">
+                    <h2 className="text-2xl font-semibold mb-2">Top 5 Locations</h2>
+                    <Recharts.ResponsiveContainer width="100%" height={300}>
+                        <Recharts.BarChart data={locationChartData}>
+                            <Recharts.CartesianGrid strokeDasharray="3 3" />
+                            <Recharts.XAxis dataKey="location" label={ value: 'Location', position: 'insideBottom', offset: -5 } tick={ fontSize: 12 } />
+                            <Recharts.YAxis label={ value: 'Count', angle: -90, position: 'insideLeft' } />
+                            <Recharts.Tooltip />
+                            <Recharts.Legend />
+                            <Recharts.Bar dataKey="count" fill="#82ca9d" />
+                        </Recharts.BarChart>
+                    </Recharts.ResponsiveContainer>
+                </div>
+                <div className="chart-container">
+                    <h2 className="text-2xl font-semibold mb-2">Cluster Distribution</h2>
+                    <Recharts.ResponsiveContainer width="100%" height={300}>
+                        <Recharts.BarChart data={clusterChartData}>
+                            <Recharts.CartesianGrid strokeDasharray="3 3" />
+                            <Recharts.XAxis dataKey="cluster" label={ value: 'Cluster ID', position: 'insideBottom', offset: -5 } />
+                            <Recharts.YAxis label={ value: 'Count', angle: -90, position: 'insideLeft' } />
+                            <Recharts.Tooltip />
+                            <Recharts.Legend />
+                            <Recharts.Bar dataKey="count" fill="#ff7300" />
+                        </Recharts.BarChart>
+                    </Recharts.ResponsiveContainer>
+                </div>
+            </div>
+        );
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

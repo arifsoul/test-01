@@ -1,0 +1,9 @@
+account = "TES_USR_LACAK"
+user = "TES_USR_LACAK"
+password = "StrongPassword123"
+# optional
+# warehouse = "<YOUR COMPUTE WH>"
+# optional
+# database = "<YOUR DATABASE>"
+# optional
+# schema = "<YOUR SCHEMA>"

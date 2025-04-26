@@ -1,0 +1,114 @@
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Vehicle Tracking Analysis Report</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            body { font-family: Arial, sans-serif; }
+            .chart-container { margin: 20px 0; }
+            .error { color: red; font-weight: bold; }
+            .chart { width: 100%; height: 300px; }
+        </style>
+    </head>
+    <body class="bg-gray-100 p-6">
+        <div id="root" class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-md"></div>
+        <div id="error" class="error" style="display: none;"></div>
+        <script>
+            // Data for charts
+            const typeChartData = [{'type': 'Parking', 'count': 53154}, {'type': 'Trip', 'count': 49892}];
+            const locationChartData = [{'location': 'PT_2GHTI26CT2', 'count': 6324}, {'location': 'PT_JSJ919', 'count': 5496}, {'location': 'MILL', 'count': 3524}, {'location': 'PT_2GHTI23CT4', 'count': 3101}, {'location': 'DLJ2_NP0_U09FC6', 'count': 2512}];
+            const clusterChartData = [{'cluster': '0', 'count': 16343}, {'cluster': '1', 'count': 15705}, {'cluster': '2', 'count': 7}, {'cluster': '3', 'count': 12910}, {'cluster': '4', 'count': 16148}, {'cluster': '5', 'count': 10526}, {'cluster': '6', 'count': 15815}, {'cluster': '7', 'count': 14614}, {'cluster': '8', 'count': 53}, {'cluster': '9', 'count': 137}, {'cluster': '10', 'count': 6}, {'cluster': '11', 'count': 15}, {'cluster': '12', 'count': 5}, {'cluster': '13', 'count': 8}, {'cluster': '14', 'count': 6}, {'cluster': '15', 'count': 9}, {'cluster': '16', 'count': 10}, {'cluster': '17', 'count': 5}, {'cluster': '18', 'count': 7}, {'cluster': '19', 'count': 7}, {'cluster': '20', 'count': 5}, {'cluster': '21', 'count': 9}, {'cluster': '22', 'count': 8}, {'cluster': '23', 'count': 6}, {'cluster': '41', 'count': 5}, {'cluster': '24', 'count': 20}, {'cluster': '27', 'count': 6}, {'cluster': '33', 'count': 5}, {'cluster': '25', 'count': 5}, {'cluster': '26', 'count': 7}, {'cluster': '34', 'count': 6}, {'cluster': '32', 'count': 5}, {'cluster': '28', 'count': 7}, {'cluster': '36', 'count': 7}, {'cluster': '29', 'count': 15}, {'cluster': '31', 'count': 4}, {'cluster': '30', 'count': 6}, {'cluster': '40', 'count': 5}, {'cluster': '35', 'count': 6}, {'cluster': '37', 'count': 8}, {'cluster': '38', 'count': 6}, {'cluster': '39', 'count': 7}];
+
+            // Error handling function
+            function showError(message) {
+                const errorDiv = document.getElementById('error');
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = message;
+            }
+
+            // Function to create a bar chart
+            function createBarChart(containerId, data, xKey, fillColor) {
+                try {
+                    const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = window.Recharts;
+                    const chartContainer = document.getElementById(containerId);
+                    const chart = new ResponsiveContainer({ width: '100%', height: 300 });
+                    const barChart = new BarChart({
+                        data: data,
+                        children: [
+                            new CartesianGrid({ strokeDasharray: '3 3' }),
+                            new XAxis({ dataKey: xKey, tick: { fontSize: 12 } }),
+                            new YAxis(),
+                            new Tooltip(),
+                            new Legend(),
+                            new Bar({ dataKey: 'count', fill: fillColor })
+                        ]
+                    });
+                    chart.setContainer(chartContainer);
+                    chart.add(barChart);
+                    chart.render();
+                } catch (e) {
+                    showError(`Error rendering chart: ${e.toString()}`);
+                }
+            }
+
+            // Main function to build the report
+            function renderReport() {
+                try {
+                    const root = document.getElementById('root');
+                    
+                    // Main container
+                    root.innerHTML = `
+                        <h1 class="text-3xl font-bold mb-4">Vehicle Tracking Analysis Report</h1>
+                        <p class="mb-4">
+                            This report analyzes vehicle tracking data using DBSCAN clustering to identify patterns
+                            in trips and parking events. Key insights include frequent locations, event types,
+                            and cluster distributions.
+                        </p>
+                        <div id="type-chart" class="chart-container">
+                            <h2 class="text-2xl font-semibold mb-2">Event Type Distribution</h2>
+                            <div id="type-chart-canvas" class="chart"></div>
+                        </div>
+                        <div id="location-chart" class="chart-container">
+                            <h2 class="text-2xl font-semibold mb-2">Top 5 Locations</h2>
+                            <div id="location-chart-canvas" class="chart"></div>
+                        </div>
+                        <div id="cluster-chart" class="chart-container">
+                            <h2 class="text-2xl font-semibold mb-2">Cluster Distribution</h2>
+                            <div id="cluster-chart-canvas" class="chart"></div>
+                        </div>
+                        <div class="mt-6">
+                            <h2 class="text-2xl font-semibold mb-2">Interesting Fact</h2>
+                            <p>
+                                The location <strong>${locationChartData[0].location}</strong> appears most frequently,
+                                with <strong>${locationChartData[0].count}</strong> events, indicating a potential parking hotspot.
+                            </p>
+                        </div>
+                        <div class="mt-6">
+                            <h2 class="text-2xl font-semibold mb-2">Conclusion</h2>
+                            <p>
+                                The DBSCAN clustering reveals patterns in vehicle movements, with key locations and event types identified.
+                                Outliers (noise points) may indicate anomalies, such as unusually long parking or high-mileage trips.
+                                Future enhancements could include spatial coordinates for precise clustering.
+                            </p>
+                        </div>
+                    `;
+
+                    // Render charts
+                    createBarChart('type-chart-canvas', typeChartData, 'type', '#8884d8');
+                    createBarChart('location-chart-canvas', locationChartData, 'location', '#82ca9d');
+                    createBarChart('cluster-chart-canvas', clusterChartData, 'cluster', '#ff7300');
+                } catch (e) {
+                    showError(`Error rendering application: ${e.toString()}`);
+                }
+            }
+
+            // Execute rendering
+            document.addEventListener('DOMContentLoaded', renderReport);
+        </script>
+    </body>
+    </html>
+    

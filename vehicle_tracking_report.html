@@ -1,0 +1,134 @@
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Vehicle Tracking Analysis Report</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            body { font-family: Arial, sans-serif; font-size: 14px; }
+            .chart-container { margin: 10px 0; max-width: 500px; }
+            .error { color: red; font-weight: bold; }
+            .chart { width: 100%; height: 200px; }
+        </style>
+    </head>
+    <body class="bg-gray-100 p-6">
+        <div id="root" class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-md"></div>
+        <div id="error" class="error" style="display: none;"></div>
+        <script>
+            const typeChartData = [{"type": "Parking", "count": 53154}, {"type": "Trip", "count": 49892}];
+            const locationChartData = [{"location": "PT_2GHTI26CT2", "count": 6324}, {"location": "PT_JSJ919", "count": 5496}, {"location": "MILL", "count": 3524}];
+            const clusterChartData = [{"cluster": "0", "count": 16343}, {"cluster": "4", "count": 16148}, {"cluster": "6", "count": 15815}, {"cluster": "Others", "count": 54740}];
+
+            function showError(message) {
+                const errorDiv = document.getElementById('error');
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = message;
+            }
+
+            function createBarChart(canvasId, data, labelKey, color) {
+                try {
+                    const truncatedLabels = data.map(item => {
+                        const label = item[labelKey];
+                        return label.length > 15 ? label.substring(0, 12) + '...' : label;
+                    });
+                    const ctx = document.getElementById(canvasId).getContext('2d');
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: truncatedLabels,
+                            datasets: [{
+                                label: 'Count',
+                                data: data.map(item => item.count),
+                                backgroundColor: color,
+                                borderColor: color,
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    title: { display: true, text: 'Count' }
+                                },
+                                x: {
+                                    title: { display: true, text: labelKey.charAt(0).toUpperCase() + labelKey.slice(1) },
+                                    ticks: {
+                                        font: { size: 8 },
+                                        autoSkip: true,
+                                        maxTicksLimit: 5,
+                                        maxRotation: 30,
+                                        minRotation: 0
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: { display: true },
+                                tooltip: { enabled: true }
+                            },
+                            layout: {
+                                padding: { bottom: 10 }
+                            }
+                        }
+                    });
+                } catch (e) {
+                    showError(`Error rendering chart: ${e.toString()}`);
+                }
+            }
+
+            function renderReport() {
+                try {
+                    const root = document.getElementById('root');
+                    root.innerHTML = `
+                        <h1 class="text-3xl font-bold mb-4">Vehicle Tracking Analysis Report</h1>
+                        <p class="mb-4">
+                            This report analyzes vehicle tracking data using DBSCAN clustering to identify patterns
+                            in trips and parking events. Key insights include frequent locations, event types,
+                            and cluster distributions.
+                        </p>
+                        <div id="type-chart" class="chart-container">
+                            <h2 class="text-xl font-semibold mb-2">Event Type Distribution</h2>
+                            <canvas id="type-chart-canvas" class="chart"></canvas>
+                        </div>
+                        <div id="location-chart" class="chart-container">
+                            <h2 class="text-xl font-semibold mb-2">Top 3 Locations</h2>
+                            <canvas id="location-chart-canvas" class="chart"></canvas>
+                        </div>
+                        <div id="cluster-chart" class="chart-container">
+                            <h2 class="text-xl font-semibold mb-2">Top 3 Cluster Distribution</h2>
+                            <canvas id="cluster-chart-canvas" class="chart"></canvas>
+                        </div>
+                        <div class="mt-6">
+                            <h2 class="text-xl font-semibold mb-2">Interesting Fact</h2>
+                            <p>
+                                The location <strong>$PT_2GHTI26CT2</strong> appears most frequently,
+                                with <strong>$6324</strong> events, indicating a potential parking hotspot.
+                            </p>
+                        </div>
+                        <div class="mt-6">
+                            <h2 class="text-xl font-semibold mb-2">Conclusion</h2>
+                            <p>
+                                The DBSCAN clustering reveals patterns in vehicle movements, with key locations and event types identified.
+                                Outliers (noise points) may indicate anomalies, such as unusually long parking or high-mileage trips.
+                                Future enhancements could include spatial coordinates for precise clustering.
+                            </p>
+                        </div>
+                    `;
+
+                    createBarChart('type-chart-canvas', typeChartData, 'type', '#8884d8');
+                    createBarChart('location-chart-canvas', locationChartData, 'location', '#82ca9d');
+                    createBarChart('cluster-chart-canvas', clusterChartData, 'cluster', '#ff7300');
+                } catch (e) {
+                    showError(`Error rendering application: ${e.toString()}`);
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', renderReport);
+        </script>
+    </body>
+    </html>
+    
