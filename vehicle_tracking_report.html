@@ -1,26 +1,95 @@
 
+    <script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+            return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+            if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+                try {
+                    var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                    var firstSheetName = workbook.SheetNames[0];
+                    var worksheet = workbook.Sheets[firstSheetName];
+                    var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                    var filteredData = jsonData.filter(row => row.some(filledCell));
+                    var headerRowIndex = filteredData.findIndex((row, index) =>
+                      row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                    );
+                    if (headerRowIndex === -1 || headerRowIndex > 25) {
+                      headerRowIndex = 0;
+                    }
+                    var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+                    csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                    return csv;
+                } catch (e) {
+                    console.error(e);
+                    return "";
+                }
+            }
+            return gk_fileData[filename] || "";
+        }
+    </script>
     <!DOCTYPE html>
-    <html lang="en">
+    <html lang="id">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Vehicle Tracking Analysis Report</title>
+        <title>Laporan Analisis Pelacakan Kendaraan</title>
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
-            body { font-family: Arial, sans-serif; font-size: 14px; }
-            .chart-container { margin: 10px 0; max-width: 500px; }
-            .error { color: red; font-weight: bold; }
-            .chart { width: 100%; height: 200px; }
+            body {
+                font-family: 'Poppins', sans-serif;
+                background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
+                margin: 0;
+                padding: 24px;
+                font-size: 16px;
+            }
+            .chart-container {
+                margin: 12px 0;
+                max-width: 600px;
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+                padding: 16px;
+            }
+            .error {
+                color: #ef4444;
+                font-weight: 600;
+            }
+            .chart {
+                width: 100%;
+                height: 300px !important;
+            }
+            .section-title {
+                color: #1f2937;
+                border-bottom: 3px solid #3b82f6;
+                padding-bottom: 6px;
+            }
+            .report-container {
+                background: white;
+                border-radius: 16px;
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+                padding: 24px;
+                max-width: 900px;
+                margin: 0 auto;
+            }
         </style>
     </head>
-    <body class="bg-gray-100 p-6">
-        <div id="root" class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-md"></div>
+    <body>
+        <div id="root" class="report-container"></div>
         <div id="error" class="error" style="display: none;"></div>
         <script>
+            Chart.register(ChartDataLabels);
             const typeChartData = [{"type": "Parking", "count": 53154}, {"type": "Trip", "count": 49892}];
             const locationChartData = [{"location": "PT_2GHTI26CT2", "count": 6324}, {"location": "PT_JSJ919", "count": 5496}, {"location": "MILL", "count": 3524}];
-            const clusterChartData = [{"cluster": "0", "count": 16343}, {"cluster": "4", "count": 16148}, {"cluster": "6", "count": 15815}, {"cluster": "Others", "count": 54740}];
+            const clusterChartData = [{"cluster": "1", "count": 38992}, {"cluster": "0", "count": 32630}, {"cluster": "2", "count": 26423}, {"cluster": "Lainnya", "count": 5001}];
+            const clusterStats = [{"cluster": 0, "count": 32630, "avg_duration": 3356, "avg_mileage": "2.36", "most_common_type": "Parking", "most_common_location": "PT_2GHTI26CT2"}, {"cluster": 1, "count": 38992, "avg_duration": 3624, "avg_mileage": "2.34", "most_common_type": "Parking", "most_common_location": "PT_2GHTI26CT2"}, {"cluster": 2, "count": 26423, "avg_duration": 5828, "avg_mileage": "2.15", "most_common_type": "Parking", "most_common_location": "PT_JSJ919"}, {"cluster": 3, "count": 565, "avg_duration": 181561, "avg_mileage": "0.00", "most_common_type": "Parking", "most_common_location": "DLJ2_NP0_U09FC6"}, {"cluster": 4, "count": 4436, "avg_duration": 7597, "avg_mileage": "46.56", "most_common_type": "Trip", "most_common_location": "MILL"}];
+            const stats = {"total_rows": 103046, "avg_duration": 5251, "avg_mileage": "4.19"};
 
             function showError(message) {
                 const errorDiv = document.getElementById('error');
@@ -28,11 +97,17 @@
                 errorDiv.textContent = message;
             }
 
+            function formatNumber(value) {
+                if (value >= 1000000) return (value / 1000000) + 'M';
+                if (value >= 1000) return (value / 1000) + 'K';
+                return value;
+            }
+
             function createBarChart(canvasId, data, labelKey, color) {
                 try {
                     const truncatedLabels = data.map(item => {
                         const label = item[labelKey];
-                        return label.length > 15 ? label.substring(0, 12) + '...' : label;
+                        return label.length > 10 ? label.substring(0, 8) + '...' : label;
                     });
                     const ctx = document.getElementById(canvasId).getContext('2d');
                     new Chart(ctx, {
@@ -40,7 +115,7 @@
                         data: {
                             labels: truncatedLabels,
                             datasets: [{
-                                label: 'Count',
+                                label: 'Jumlah',
                                 data: data.map(item => item.count),
                                 backgroundColor: color,
                                 borderColor: color,
@@ -50,80 +125,120 @@
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
+                            animation: {
+                                duration: 1000,
+                                easing: 'easeOutQuart'
+                            },
                             scales: {
                                 y: {
                                     beginAtZero: true,
-                                    title: { display: true, text: 'Count' }
+                                    max: 100000,
+                                    title: { display: true, text: 'Jumlah', font: { size: 14, family: 'Poppins' } },
+                                    ticks: {
+                                        font: { size: 12, family: 'Poppins' },
+                                        callback: function(value) {
+                                            return formatNumber(value);
+                                        }
+                                    }
                                 },
                                 x: {
-                                    title: { display: true, text: labelKey.charAt(0).toUpperCase() + labelKey.slice(1) },
+                                    title: { display: true, text: labelKey.charAt(0).toUpperCase() + labelKey.slice(1), font: { size: 14, family: 'Poppins' } },
                                     ticks: {
-                                        font: { size: 8 },
+                                        font: { size: 12, family: 'Poppins' },
                                         autoSkip: true,
-                                        maxTicksLimit: 5,
-                                        maxRotation: 30,
+                                        maxTicksLimit: 4,
+                                        maxRotation: 0,
                                         minRotation: 0
                                     }
                                 }
                             },
                             plugins: {
-                                legend: { display: true },
-                                tooltip: { enabled: true }
+                                legend: {
+                                    display: true,
+                                    labels: { font: { size: 12, family: 'Poppins' } }
+                                },
+                                tooltip: {
+                                    enabled: true,
+                                    bodyFont: { size: 12, family: 'Poppins' },
+                                    callbacks: {
+                                        label: function(context) {
+                                            return context.dataset.label + ': ' + formatNumber(context.raw);
+                                        }
+                                    }
+                                },
+                                datalabels: {
+                                    anchor: 'end',
+                                    align: 'top',
+                                    font: { size: 12, family: 'Poppins', weight: '600' },
+                                    formatter: function(value) {
+                                        return formatNumber(value);
+                                    },
+                                    color: '#1f2937'
+                                }
                             },
                             layout: {
-                                padding: { bottom: 10 }
+                                padding: { bottom: 5, top: 30 }
                             }
                         }
                     });
                 } catch (e) {
-                    showError(`Error rendering chart: ${e.toString()}`);
+                    showError(`Error saat membuat chart: ${e.toString()}`);
                 }
             }
 
             function renderReport() {
                 try {
+                    if (!Array.isArray(clusterStats)) {
+                        throw new Error('clusterStats is not an array');
+                    }
                     const root = document.getElementById('root');
                     root.innerHTML = `
-                        <h1 class="text-3xl font-bold mb-4">Vehicle Tracking Analysis Report</h1>
-                        <p class="mb-4">
-                            This report analyzes vehicle tracking data using DBSCAN clustering to identify patterns
-                            in trips and parking events. Key insights include frequent locations, event types,
-                            and cluster distributions.
+                        <h1 class="text-3xl font-semibold mb-4 text-gray-800 section-title">Laporan Analisis Pelacakan Kendaraan</h1>
+                        <p class="mb-4 text-gray-600">
+                            Laporan ini menganalisis data pelacakan kendaraan menggunakan algoritma clustering K-Means untuk mengidentifikasi pola dalam perjalanan dan parkir. Laporan mencakup distribusi tipe peristiwa, lokasi teratas, distribusi cluster, dan analisis mendalam tentang pola yang ditemukan.
                         </p>
+
+                        <div class="mt-6">
+                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Statistik Dasar</h2>
+                            <p class="text-gray-600">
+                                <strong>Jumlah Total Peristiwa:</strong> 103046<br>
+                                <strong>Rata-rata Durasi Peristiwa:</strong> 5251 detik<br>
+                                <strong>Rata-rata Jarak Tempuh:</strong> 4.19 km
+                            </p>
+                        </div>
+
                         <div id="type-chart" class="chart-container">
-                            <h2 class="text-xl font-semibold mb-2">Event Type Distribution</h2>
+                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Distribusi Tipe Peristiwa</h2>
                             <canvas id="type-chart-canvas" class="chart"></canvas>
                         </div>
+
                         <div id="location-chart" class="chart-container">
-                            <h2 class="text-xl font-semibold mb-2">Top 3 Locations</h2>
+                            <h2 class="text-xl font-semibold mb-2 text-gray-700">3 Lokasi Teratas</h2>
                             <canvas id="location-chart-canvas" class="chart"></canvas>
                         </div>
+
                         <div id="cluster-chart" class="chart-container">
-                            <h2 class="text-xl font-semibold mb-2">Top 3 Cluster Distribution</h2>
+                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Distribusi Cluster Teratas</h2>
                             <canvas id="cluster-chart-canvas" class="chart"></canvas>
                         </div>
+
                         <div class="mt-6">
-                            <h2 class="text-xl font-semibold mb-2">Interesting Fact</h2>
-                            <p>
-                                The location <strong>$PT_2GHTI26CT2</strong> appears most frequently,
-                                with <strong>$6324</strong> events, indicating a potential parking hotspot.
+                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Fakta Menarik</h2>
+                            <p class="text-gray-600">
+                                Lokasi <strong class="text-blue-600">PT_2GHTI26CT2</strong> adalah lokasi yang paling sering dikunjungi, dengan <strong class="text-blue-600">6324</strong> peristiwa, menunjukkan bahwa lokasi ini kemungkinan merupakan titik parkir utama atau pusat aktivitas.
                             </p>
                         </div>
+
                         <div class="mt-6">
-                            <h2 class="text-xl font-semibold mb-2">Conclusion</h2>
-                            <p>
-                                The DBSCAN clustering reveals patterns in vehicle movements, with key locations and event types identified.
-                                Outliers (noise points) may indicate anomalies, such as unusually long parking or high-mileage trips.
-                                Future enhancements could include spatial coordinates for precise clustering.
-                            </p>
-                        </div>
+                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Detail Cluster</h2>
+                            <div class="grid grid-cols-1 gap-4">
                     `;
 
-                    createBarChart('type-chart-canvas', typeChartData, 'type', '#8884d8');
-                    createBarChart('location-chart-canvas', locationChartData, 'location', '#82ca9d');
-                    createBarChart('cluster-chart-canvas', clusterChartData, 'cluster', '#ff7300');
+                    createBarChart('type-chart-canvas', typeChartData, 'type', '#6366f1');
+                    createBarChart('location-chart-canvas', locationChartData, 'location', '#34d399');
+                    createBarChart('cluster-chart-canvas', clusterChartData, 'cluster', '#fb923c');
                 } catch (e) {
-                    showError(`Error rendering application: ${e.toString()}`);
+                    showError(`Error saat membuat laporan: ${e.toString()}`);
                 }
             }
 
@@ -131,4 +246,78 @@
         </script>
     </body>
     </html>
+    
+            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                <h3 class="text-lg font-semibold text-gray-700">Cluster 0</h3>
+                <p class="text-gray-600">
+                    <strong>Jumlah Peristiwa:</strong> 32630<br>
+                    <strong>Rata-rata Durasi:</strong> 3356 detik<br>
+                    <strong>Rata-rata Jarak Tempuh:</strong> 2.36 km<br>
+                    <strong>Tipe Peristiwa Terbanyak:</strong> Parking<br>
+                    <strong>Lokasi Terbanyak:</strong> PT_2GHTI26CT2
+                </p>
+            </div>
+        
+            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                <h3 class="text-lg font-semibold text-gray-700">Cluster 1</h3>
+                <p class="text-gray-600">
+                    <strong>Jumlah Peristiwa:</strong> 38992<br>
+                    <strong>Rata-rata Durasi:</strong> 3624 detik<br>
+                    <strong>Rata-rata Jarak Tempuh:</strong> 2.34 km<br>
+                    <strong>Tipe Peristiwa Terbanyak:</strong> Parking<br>
+                    <strong>Lokasi Terbanyak:</strong> PT_2GHTI26CT2
+                </p>
+            </div>
+        
+            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                <h3 class="text-lg font-semibold text-gray-700">Cluster 2</h3>
+                <p class="text-gray-600">
+                    <strong>Jumlah Peristiwa:</strong> 26423<br>
+                    <strong>Rata-rata Durasi:</strong> 5828 detik<br>
+                    <strong>Rata-rata Jarak Tempuh:</strong> 2.15 km<br>
+                    <strong>Tipe Peristiwa Terbanyak:</strong> Parking<br>
+                    <strong>Lokasi Terbanyak:</strong> PT_JSJ919
+                </p>
+            </div>
+        
+            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                <h3 class="text-lg font-semibold text-gray-700">Cluster 3</h3>
+                <p class="text-gray-600">
+                    <strong>Jumlah Peristiwa:</strong> 565<br>
+                    <strong>Rata-rata Durasi:</strong> 181561 detik<br>
+                    <strong>Rata-rata Jarak Tempuh:</strong> 0.00 km<br>
+                    <strong>Tipe Peristiwa Terbanyak:</strong> Parking<br>
+                    <strong>Lokasi Terbanyak:</strong> DLJ2_NP0_U09FC6
+                </p>
+            </div>
+        
+            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                <h3 class="text-lg font-semibold text-gray-700">Cluster 4</h3>
+                <p class="text-gray-600">
+                    <strong>Jumlah Peristiwa:</strong> 4436<br>
+                    <strong>Rata-rata Durasi:</strong> 7597 detik<br>
+                    <strong>Rata-rata Jarak Tempuh:</strong> 46.56 km<br>
+                    <strong>Tipe Peristiwa Terbanyak:</strong> Trip<br>
+                    <strong>Lokasi Terbanyak:</strong> MILL
+                </p>
+            </div>
+        
+        </div>
+    </div>
+
+    <div class="mt-6">
+        <h2 class="text-xl font-semibold mb-2 text-gray-700">Kesimpulan</h2>
+        <p class="text-gray-600">
+            Clustering K-Means mengungkapkan pola yang signifikan dalam pergerakan kendaraan. Lokasi-lokasi utama dan tipe peristiwa telah diidentifikasi, memberikan wawasan tentang perilaku kendaraan. Cluster yang dihasilkan menunjukkan variasi dalam waktu dan jarak tempuh, serta preferensi lokasi yang berbeda.
+        </p>
+    </div>
+
+    <div class="mt-6">
+        <h2 class="text-xl font-semibold mb-2 text-gray-700">Rekomendasi</h2>
+        <p class="text-gray-600">
+            1. <strong>Optimasi Rute:</strong> Fokuskan pada lokasi dengan frekuensi tinggi seperti PT_2GHTI26CT2 untuk mengoptimalkan rute dan mengurangi kemacetan.<br>
+            2. <strong>Analisis Lebih Lanjut:</strong> Gunakan data koordinat spasial untuk analisis yang lebih mendalam tentang pola pergerakan.<br>
+            3. <strong>Pemantauan Anomali:</strong> Perhatikan cluster dengan durasi atau jarak tempuh yang sangat tinggi untuk mendeteksi potensi anomali, seperti perjalanan yang tidak efisien.
+        </p>
+    </div>
     
