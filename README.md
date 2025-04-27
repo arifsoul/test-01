@@ -260,15 +260,13 @@ project_directory/
       [![](https://img.youtube.com/vi/uu9BNt9p-cM/0.jpg)](https://youtu.be/uu9BNt9p-cM)
     - Video Player Lokal: Lihat di [Video Player HTML](./video_player.html) untuk pemutaran file lokal (hanya berfungsi di platform yang mendukung HTML, seperti GitHub Pages).
     - Deskripsi: Menunjukkan hasil inference dengan pemrosesan setiap frame, memberikan pelacakan yang lebih halus dan akurat. [Unduh file lokal](./video/precessed-1-frame.mp4).
-    <!-- Untuk platform yang mendukung HTML (tidak berfungsi di GitHub) -->
-    <iframe width="320" height="180" src="https://www.youtube.com/embed/uu9BNt9p-cM" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+      
   - [**Processed Video (Inference Every 30 Frames)**](https://youtu.be/KJyNu4lUbdk):
     - Pratinjau (klik untuk memutar di YouTube):  
       [![](https://img.youtube.com/vi/KJyNu4lUbdk/0.jpg)](https://youtu.be/KJyNu4lUbdk)
     - Video Player Lokal: Lihat di [Video Player HTML](./video_player.html) untuk pemutaran file lokal (hanya berfungsi di platform yang mendukung HTML, seperti GitHub Pages).
     - Deskripsi: Menunjukkan hasil inference sesuai spesifikasi awal (setiap 30 frame, ~1 detik pada 30 FPS), yang mungkin memiliki pelacakan kurang akurat tetapi lebih hemat sumber daya. [Unduh file lokal](./video/precessed-30-frame.mp4).
-    <!-- Untuk platform yang mendukung HTML (tidak berfungsi di GitHub) -->
-    <iframe width="320" height="180" src="https://www.youtube.com/embed/KJyNu4lUbdk" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+      
 - **Performa**:
   - Akurasi deteksi bergantung pada model YOLO ([`22K-5-M.pt`](./model/22K-5-M.pt)). Berdasarkan [`analisis.md`](./analisis.md), model memiliki mAP@50 55,4%, dengan performa baik pada Kelas 0 (`Ripe`) tetapi buruk pada Kelas 3 (`Rotten`).
   - Pelacakan stabil menggunakan Kalman Filter, dengan penanganan objek yang hilang hingga 60 frame.
