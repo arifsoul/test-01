@@ -1,10 +1,10 @@
-opencv-python
+opencv-python>=4.5.5
 torch --index-url https://download.pytorch.org/whl/cu118
-ultralytics
-filterpy
-PyQt5
-snowflake-connector-python
-numpy
-pandas
-scikit-learn
-tqdm
+ultralytics>=8.0.0
+filterpy>=1.4.5
+PyQt5>=5.15.6
+snowflake-connector-python>=2.7.0
+numpy>=1.21.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+tqdm>=4.62.0
