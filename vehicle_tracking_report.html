@@ -1,323 +1,220 @@
 
-    <script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-            return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-            if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-                try {
-                    var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                    var firstSheetName = workbook.SheetNames[0];
-                    var worksheet = workbook.Sheets[firstSheetName];
-                    var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                    var filteredData = jsonData.filter(row => row.some(filledCell));
-                    var headerRowIndex = filteredData.findIndex((row, index) =>
-                      row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                    );
-                    if (headerRowIndex === -1 || headerRowIndex > 25) {
-                      headerRowIndex = 0;
-                    }
-                    var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
-                    csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                    return csv;
-                } catch (e) {
-                    console.error(e);
-                    return "";
-                }
-            }
-            return gk_fileData[filename] || "";
-        }
-    </script>
     <!DOCTYPE html>
     <html lang="id">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Laporan Analisis Pelacakan Kendaraan</title>
-        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+        <title>Laporan Pelacakan Kendaraan</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
             body {
-                font-family: 'Poppins', sans-serif;
-                background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
+                font-family: 'Inter', sans-serif;
+                background: #f7fafc;
                 margin: 0;
                 padding: 24px;
-                font-size: 16px;
             }
-            .chart-container {
-                margin: 12px 0;
-                max-width: 600px;
-                background: white;
-                border-radius: 12px;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-                padding: 16px;
-            }
-            .error {
-                color: #ef4444;
-                font-weight: 600;
-            }
-            .chart {
-                width: 100%;
-                height: 300px !important;
-            }
-            .section-title {
-                color: #1f2937;
-                border-bottom: 3px solid #3b82f6;
-                padding-bottom: 6px;
-            }
-            .report-container {
-                background: white;
-                border-radius: 16px;
-                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
-                padding: 24px;
+            .container {
                 max-width: 900px;
                 margin: 0 auto;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                padding: 24px;
+            }
+            .chart {
+                height: 200px !important;
+            }
+            .tooltip {
+                position: relative;
+                display: inline-block;
+                cursor: pointer;
+            }
+            .tooltip .tooltiptext {
+                visibility: hidden;
+                width: 250px;
+                background-color: #4a5568;
+                color: white;
+                text-align: center;
+                border-radius: 4px;
+                padding: 8px;
+                position: absolute;
+                z-index: 1;
+                bottom: 125%;
+                left: 50%;
+                margin-left: -125px;
+                opacity: 0;
+                transition: opacity 0.3s;
+            }
+            .tooltip:hover .tooltiptext {
+                visibility: visible;
+                opacity: 1;
+            }
+            .section {
+                border-left: 4px solid #4a90e2;
+                padding-left: 16px;
+                margin-bottom: 24px;
             }
         </style>
     </head>
     <body>
-        <div id="root" class="report-container"></div>
-        <div id="error" class="error" style="display: none;"></div>
+        <div class="container">
+            <h1 class="text-2xl font-semibold text-gray-800 mb-4">Laporan Pelacakan Kendaraan</h1>
+            <p class="text-gray-600 mb-6">
+                Laporan ini mengelompokkan data pergerakan kendaraan untuk membantu Anda mengambil keputusan penting seperti menghemat bahan bakar, menjaga kondisi kendaraan, menemukan masalah, dan meningkatkan efisiensi operasional.
+            </p>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Ringkasan Data</h2>
+                <p class="text-gray-600">
+                    <strong>Jumlah Peristiwa:</strong> 103046<br>
+                    <strong>Rata-rata Durasi:</strong> 5251 detik<br>
+                    <strong>Rata-rata Jarak:</strong> 4.19 km
+                </p>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">1. Optimasi Rute</h2>
+                <p class="text-gray-600 mb-4">
+                    Bagian ini membantu mengurangi waktu dan bahan bakar dengan memilih jalur terbaik berdasarkan lokasi yang sering dikunjungi dan efisiensi perjalanan.
+                </p>
+                <canvas id="location-chart" class="chart mb-4"></canvas>
+                <ul class="list-disc pl-5 text-gray-600">
+                    <li><strong>PT_2GHTI26CT2</strong>: Dikunjungi 6324 kali. Pertimbangkan jalur alternatif untuk mengurangi kemacetan.</li><li><strong>PT_JSJ919</strong>: Dikunjungi 5496 kali. Pertimbangkan jalur alternatif untuk mengurangi kemacetan.</li><li><strong>MILL</strong>: Dikunjungi 3524 kali. Pertimbangkan jalur alternatif untuk mengurangi kemacetan.</li>
+                    <li><strong>Kelompok 0 (Perjalanan Tidak Efisien)</strong>: Efisiensi 1.08 km/jam. Gunakan rute alternatif berbasis lalu lintas untuk 90 kendaraan.</li><li><strong>Kelompok 3 (Perjalanan Tidak Efisien)</strong>: Efisiensi 0.00 km/jam. Gunakan rute alternatif berbasis lalu lintas untuk 77 kendaraan.</li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">2. Perencanaan Perawatan</h2>
+                <p class="text-gray-600 mb-4">
+                    Bagian ini mengidentifikasi kendaraan yang sering melakukan perjalanan jauh untuk memastikan perawatan tepat waktu, mencegah kerusakan.
+                </p>
+                <canvas id="cluster-chart" class="chart mb-4"></canvas>
+                <ul class="list-disc pl-5 text-gray-600">
+                    
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">3. Deteksi Anomali</h2>
+                <p class="text-gray-600 mb-4">
+                    Bagian ini menemukan perjalanan atau parkir yang tidak biasa (anomali) untuk ditindaklanjuti, seperti kesalahan pengemudi atau masalah kendaraan.
+                </p>
+                <ul class="list-disc pl-5 text-gray-600">
+                    <li>Kendaraan <strong>O5121HL022</strong> di Kelompok 2: Durasi 11 menit, Jarak 4.65 km di PT_2GHTH21AC1. Periksa apakah ini normal.</li><li>Kendaraan <strong>O5121HL026</strong> di Kelompok 2: Durasi 9 menit, Jarak 4.22 km di PT_2GHTG20AC1. Periksa apakah ini normal.</li><li>Kendaraan <strong>O5422DT013</strong> di Kelompok 2: Durasi 32 menit, Jarak 13.33 km di PT_2GHTEBLPB1. Periksa apakah ini normal.</li><li>Kendaraan <strong>O5422DT028</strong> di Kelompok 3: Durasi 8021 menit, Jarak 0.00 km di DLJ2_NP0_U09FC6. Periksa apakah ini normal.</li><li>Kendaraan <strong>O5422DT028</strong> di Kelompok 3: Durasi 5501 menit, Jarak 0.00 km di DLJ2_NP0_U09FC6. Periksa apakah ini normal.</li><li>Kendaraan <strong>O5422DT028</strong> di Kelompok 3: Durasi 4729 menit, Jarak 0.00 km di DLJ2_NP0_U09FC6. Periksa apakah ini normal.</li><li>Kendaraan <strong>O5121DT094</strong> di Kelompok 1: Durasi 112 menit, Jarak 49.00 km di PT_2GHTH25CR1. Periksa apakah ini normal.</li><li>Kendaraan <strong>O5121DT094</strong> di Kelompok 1: Durasi 138 menit, Jarak 45.00 km di PT_2GHTI26CT6. Periksa apakah ini normal.</li><li>Kendaraan <strong>O5121HL009</strong> di Kelompok 1: Durasi 173 menit, Jarak 55.00 km di MILL. Periksa apakah ini normal.</li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">4. Peningkatan Efisiensi</h2>
+                <p class="text-gray-600 mb-4">
+                    Bagian ini membantu mengurangi waktu parkir atau perjalanan tidak efisien untuk menghemat biaya operasional.
+                </p>
+                <ul class="list-disc pl-5 text-gray-600">
+                    <li><strong>Kelompok 0 (Perjalanan Tidak Efisien)</strong>: Efisiensi rendah (1.1 km/jam) menunjukkan kemacetan atau rute buruk di PT_2GHTI26CT2. <span class="tooltip">📋<span class="tooltiptext">Gunakan rute alternatif berbasis lalu lintas untuk 90 kendaraan.</span></span></li><li><strong>Kelompok 3 (Perjalanan Tidak Efisien)</strong>: Efisiensi rendah (0.0 km/jam) menunjukkan kemacetan atau rute buruk di DLJ2_NP0_U09FC6. <span class="tooltip">📋<span class="tooltiptext">Gunakan rute alternatif berbasis lalu lintas untuk 77 kendaraan.</span></span></li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Kurva Elbow (Jumlah Kelompok Optimal)</h2>
+                <p class="text-gray-600 mb-4">
+                    Grafik ini menunjukkan jumlah kelompok yang ideal untuk mengelompokkan data kendaraan.
+                </p>
+                <canvas id="elbow-chart" class="chart"></canvas>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Ringkasan Kelompok</h2>
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="p-2">Kelompok</th>
+                            <th class="p-2">Jumlah</th>
+                            <th class="p-2">Durasi (menit)</th>
+                            <th class="p-2">Jarak (km)</th>
+                            <th class="p-2">Efisiensi (km/jam)</th>
+                            <th class="p-2">Lokasi Utama</th>
+                            <th class="p-2">Anomali</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td class="p-2">Perjalanan Tidak Efisien</td><td class="p-2">70407</td><td class="p-2">85</td><td class="p-2">0.21</td><td class="p-2">1.08</td><td class="p-2">PT_2GHTI26CT2</td><td class="p-2">0</td></tr><tr><td class="p-2">Perjalanan Reguler</td><td class="p-2">27898</td><td class="p-2">28</td><td class="p-2">7.80</td><td class="p-2">16.51</td><td class="p-2">PT_JSJ919</td><td class="p-2">1880</td></tr><tr><td class="p-2">Perjalanan Tidak Efisien</td><td class="p-2">581</td><td class="p-2">2986</td><td class="p-2">0.00</td><td class="p-2">0.00</td><td class="p-2">DLJ2_NP0_U09FC6</td><td class="p-2">198</td></tr><tr><td class="p-2">Perjalanan Reguler</td><td class="p-2">4160</td><td class="p-2">129</td><td class="p-2">47.88</td><td class="p-2">22.85</td><td class="p-2">MILL</td><td class="p-2">3075</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <script>
-            Chart.register(ChartDataLabels);
-            const typeChartData = [{"type": "Parking", "count": 53154}, {"type": "Trip", "count": 49892}];
             const locationChartData = [{"location": "PT_2GHTI26CT2", "count": 6324}, {"location": "PT_JSJ919", "count": 5496}, {"location": "MILL", "count": 3524}];
-            const clusterChartData = [{"cluster": "1", "count": 38992}, {"cluster": "0", "count": 32630}, {"cluster": "2", "count": 26423}, {"cluster": "Lainnya", "count": 5001}];
-            const clusterStats = [{"cluster": 0, "count": 32630, "avg_duration": 3356, "avg_mileage": "2.36", "most_common_type": "Parking", "most_common_location": "PT_2GHTI26CT2"}, {"cluster": 1, "count": 38992, "avg_duration": 3624, "avg_mileage": "2.34", "most_common_type": "Parking", "most_common_location": "PT_2GHTI26CT2"}, {"cluster": 2, "count": 26423, "avg_duration": 5828, "avg_mileage": "2.15", "most_common_type": "Parking", "most_common_location": "PT_JSJ919"}, {"cluster": 3, "count": 565, "avg_duration": 181561, "avg_mileage": "0.00", "most_common_type": "Parking", "most_common_location": "DLJ2_NP0_U09FC6"}, {"cluster": 4, "count": 4436, "avg_duration": 7597, "avg_mileage": "46.56", "most_common_type": "Trip", "most_common_location": "MILL"}];
-            const stats = {"total_rows": 103046, "avg_duration": 5251, "avg_mileage": "4.19"};
-
-            function showError(message) {
-                const errorDiv = document.getElementById('error');
-                errorDiv.style.display = 'block';
-                errorDiv.textContent = message;
-            }
-
-            function formatNumber(value) {
-                if (value >= 1000000) return (value / 1000000) + 'M';
-                if (value >= 1000) return (value / 1000) + 'K';
-                return value;
-            }
+            const clusterChartData = [{"cluster": "Kelompok 0 (Perjalanan Tidak Efisien)", "count": 70407}, {"cluster": "Kelompok 2 (Perjalanan Reguler)", "count": 27898}, {"cluster": "Kelompok 3 (Perjalanan Tidak Efisien)", "count": 581}, {"cluster": "Kelompok 1 (Perjalanan Reguler)", "count": 4160}];
+            const elbowData = [{"clusters": 1, "wcss": 309137.9999999422}, {"clusters": 2, "wcss": 251529.31129712093}, {"clusters": 3, "wcss": 149068.08215070044}, {"clusters": 4, "wcss": 92523.83868506284}, {"clusters": 5, "wcss": 77859.21778327464}, {"clusters": 6, "wcss": 69680.25700033958}, {"clusters": 7, "wcss": 47705.062121265815}, {"clusters": 8, "wcss": 37476.30268084625}, {"clusters": 9, "wcss": 33463.43068220248}, {"clusters": 10, "wcss": 29391.046413098527}];
+            const anomalyDetails = [{"cluster": 2, "unit": "O5121HL022", "duration": 11, "mileage": "4.65", "location": "PT_2GHTH21AC1"}, {"cluster": 2, "unit": "O5121HL026", "duration": 9, "mileage": "4.22", "location": "PT_2GHTG20AC1"}, {"cluster": 2, "unit": "O5422DT013", "duration": 32, "mileage": "13.33", "location": "PT_2GHTEBLPB1"}, {"cluster": 3, "unit": "O5422DT028", "duration": 8021, "mileage": "0.00", "location": "DLJ2_NP0_U09FC6"}, {"cluster": 3, "unit": "O5422DT028", "duration": 5501, "mileage": "0.00", "location": "DLJ2_NP0_U09FC6"}, {"cluster": 3, "unit": "O5422DT028", "duration": 4729, "mileage": "0.00", "location": "DLJ2_NP0_U09FC6"}, {"cluster": 1, "unit": "O5121DT094", "duration": 112, "mileage": "49.00", "location": "PT_2GHTH25CR1"}, {"cluster": 1, "unit": "O5121DT094", "duration": 138, "mileage": "45.00", "location": "PT_2GHTI26CT6"}, {"cluster": 1, "unit": "O5121HL009", "duration": 173, "mileage": "55.00", "location": "MILL"}];
 
             function createBarChart(canvasId, data, labelKey, color) {
-                try {
-                    const truncatedLabels = data.map(item => {
-                        const label = item[labelKey];
-                        return label.length > 10 ? label.substring(0, 8) + '...' : label;
-                    });
-                    const ctx = document.getElementById(canvasId).getContext('2d');
-                    new Chart(ctx, {
-                        type: 'bar',
-                        data: {
-                            labels: truncatedLabels,
-                            datasets: [{
-                                label: 'Jumlah',
-                                data: data.map(item => item.count),
-                                backgroundColor: color,
-                                borderColor: color,
-                                borderWidth: 1
-                            }]
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.map(item => item[labelKey].length > 15 ? item[labelKey].substring(0, 12) + '...' : item[labelKey]),
+                        datasets: [{
+                            label: 'Jumlah',
+                            data: data.map(item => item.count),
+                            backgroundColor: color,
+                            borderColor: color,
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Jumlah' } },
+                            x: { title: { display: true, text: labelKey.charAt(0).toUpperCase() + labelKey.slice(1) } }
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            animation: {
-                                duration: 1000,
-                                easing: 'easeOutQuart'
-                            },
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    max: 100000,
-                                    title: { display: true, text: 'Jumlah', font: { size: 14, family: 'Poppins' } },
-                                    ticks: {
-                                        font: { size: 12, family: 'Poppins' },
-                                        callback: function(value) {
-                                            return formatNumber(value);
-                                        }
-                                    }
-                                },
-                                x: {
-                                    title: { display: true, text: labelKey.charAt(0).toUpperCase() + labelKey.slice(1), font: { size: 14, family: 'Poppins' } },
-                                    ticks: {
-                                        font: { size: 12, family: 'Poppins' },
-                                        autoSkip: true,
-                                        maxTicksLimit: 4,
-                                        maxRotation: 0,
-                                        minRotation: 0
-                                    }
-                                }
-                            },
-                            plugins: {
-                                legend: {
-                                    display: true,
-                                    labels: { font: { size: 12, family: 'Poppins' } }
-                                },
-                                tooltip: {
-                                    enabled: true,
-                                    bodyFont: { size: 12, family: 'Poppins' },
-                                    callbacks: {
-                                        label: function(context) {
-                                            return context.dataset.label + ': ' + formatNumber(context.raw);
-                                        }
-                                    }
-                                },
-                                datalabels: {
-                                    anchor: 'end',
-                                    align: 'top',
-                                    font: { size: 12, family: 'Poppins', weight: '600' },
-                                    formatter: function(value) {
-                                        return formatNumber(value);
-                                    },
-                                    color: '#1f2937'
-                                }
-                            },
-                            layout: {
-                                padding: { bottom: 5, top: 30 }
-                            }
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { enabled: true }
                         }
-                    });
-                } catch (e) {
-                    showError(`Error saat membuat chart: ${e.toString()}`);
-                }
-            }
-
-            function renderReport() {
-                try {
-                    if (!Array.isArray(clusterStats)) {
-                        throw new Error('clusterStats is not an array');
                     }
-                    const root = document.getElementById('root');
-                    root.innerHTML = `
-                        <h1 class="text-3xl font-semibold mb-4 text-gray-800 section-title">Laporan Analisis Pelacakan Kendaraan</h1>
-                        <p class="mb-4 text-gray-600">
-                            Laporan ini menganalisis data pelacakan kendaraan menggunakan algoritma clustering K-Means untuk mengidentifikasi pola dalam perjalanan dan parkir. Laporan mencakup distribusi tipe peristiwa, lokasi teratas, distribusi cluster, dan analisis mendalam tentang pola yang ditemukan.
-                        </p>
-
-                        <div class="mt-6">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Statistik Dasar</h2>
-                            <p class="text-gray-600">
-                                <strong>Jumlah Total Peristiwa:</strong> 103046<br>
-                                <strong>Rata-rata Durasi Peristiwa:</strong> 5251 detik<br>
-                                <strong>Rata-rata Jarak Tempuh:</strong> 4.19 km
-                            </p>
-                        </div>
-
-                        <div id="type-chart" class="chart-container">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Distribusi Tipe Peristiwa</h2>
-                            <canvas id="type-chart-canvas" class="chart"></canvas>
-                        </div>
-
-                        <div id="location-chart" class="chart-container">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">3 Lokasi Teratas</h2>
-                            <canvas id="location-chart-canvas" class="chart"></canvas>
-                        </div>
-
-                        <div id="cluster-chart" class="chart-container">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Distribusi Cluster Teratas</h2>
-                            <canvas id="cluster-chart-canvas" class="chart"></canvas>
-                        </div>
-
-                        <div class="mt-6">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Fakta Menarik</h2>
-                            <p class="text-gray-600">
-                                Lokasi <strong class="text-blue-600">PT_2GHTI26CT2</strong> adalah lokasi yang paling sering dikunjungi, dengan <strong class="text-blue-600">6324</strong> peristiwa, menunjukkan bahwa lokasi ini kemungkinan merupakan titik parkir utama atau pusat aktivitas.
-                            </p>
-                        </div>
-
-                        <div class="mt-6">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Detail Cluster</h2>
-                            <div class="grid grid-cols-1 gap-4">
-                    `;
-
-                    createBarChart('type-chart-canvas', typeChartData, 'type', '#6366f1');
-                    createBarChart('location-chart-canvas', locationChartData, 'location', '#34d399');
-                    createBarChart('cluster-chart-canvas', clusterChartData, 'cluster', '#fb923c');
-                } catch (e) {
-                    showError(`Error saat membuat laporan: ${e.toString()}`);
-                }
+                });
             }
 
-            document.addEventListener('DOMContentLoaded', renderReport);
+            function createElbowChart(canvasId, data) {
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.map(item => item.clusters),
+                        datasets: [{
+                            label: 'WCSS',
+                            data: data.map(item => item.wcss),
+                            borderColor: '#38a169',
+                            backgroundColor: 'rgba(56, 161, 105, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: false, title: { display: true, text: 'WCSS' } },
+                            x: { title: { display: true, text: 'Jumlah Kelompok' } }
+                        },
+                        plugins: {
+                            legend: { display: true },
+                            tooltip: { enabled: true }
+                        }
+                    }
+                });
+            }
+
+            createBarChart('location-chart', locationChartData, 'location', '#4a90e2');
+            createBarChart('cluster-chart', clusterChartData, 'cluster', '#e53e3e');
+            createElbowChart('elbow-chart', elbowData);
         </script>
     </body>
     </html>
-    
-            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
-                <h3 class="text-lg font-semibold text-gray-700">Cluster 0</h3>
-                <p class="text-gray-600">
-                    <strong>Jumlah Peristiwa:</strong> 32630<br>
-                    <strong>Rata-rata Durasi:</strong> 3356 detik<br>
-                    <strong>Rata-rata Jarak Tempuh:</strong> 2.36 km<br>
-                    <strong>Tipe Peristiwa Terbanyak:</strong> Parking<br>
-                    <strong>Lokasi Terbanyak:</strong> PT_2GHTI26CT2
-                </p>
-            </div>
-        
-            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
-                <h3 class="text-lg font-semibold text-gray-700">Cluster 1</h3>
-                <p class="text-gray-600">
-                    <strong>Jumlah Peristiwa:</strong> 38992<br>
-                    <strong>Rata-rata Durasi:</strong> 3624 detik<br>
-                    <strong>Rata-rata Jarak Tempuh:</strong> 2.34 km<br>
-                    <strong>Tipe Peristiwa Terbanyak:</strong> Parking<br>
-                    <strong>Lokasi Terbanyak:</strong> PT_2GHTI26CT2
-                </p>
-            </div>
-        
-            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
-                <h3 class="text-lg font-semibold text-gray-700">Cluster 2</h3>
-                <p class="text-gray-600">
-                    <strong>Jumlah Peristiwa:</strong> 26423<br>
-                    <strong>Rata-rata Durasi:</strong> 5828 detik<br>
-                    <strong>Rata-rata Jarak Tempuh:</strong> 2.15 km<br>
-                    <strong>Tipe Peristiwa Terbanyak:</strong> Parking<br>
-                    <strong>Lokasi Terbanyak:</strong> PT_JSJ919
-                </p>
-            </div>
-        
-            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
-                <h3 class="text-lg font-semibold text-gray-700">Cluster 3</h3>
-                <p class="text-gray-600">
-                    <strong>Jumlah Peristiwa:</strong> 565<br>
-                    <strong>Rata-rata Durasi:</strong> 181561 detik<br>
-                    <strong>Rata-rata Jarak Tempuh:</strong> 0.00 km<br>
-                    <strong>Tipe Peristiwa Terbanyak:</strong> Parking<br>
-                    <strong>Lokasi Terbanyak:</strong> DLJ2_NP0_U09FC6
-                </p>
-            </div>
-        
-            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
-                <h3 class="text-lg font-semibold text-gray-700">Cluster 4</h3>
-                <p class="text-gray-600">
-                    <strong>Jumlah Peristiwa:</strong> 4436<br>
-                    <strong>Rata-rata Durasi:</strong> 7597 detik<br>
-                    <strong>Rata-rata Jarak Tempuh:</strong> 46.56 km<br>
-                    <strong>Tipe Peristiwa Terbanyak:</strong> Trip<br>
-                    <strong>Lokasi Terbanyak:</strong> MILL
-                </p>
-            </div>
-        
-        </div>
-    </div>
-
-    <div class="mt-6">
-        <h2 class="text-xl font-semibold mb-2 text-gray-700">Kesimpulan</h2>
-        <p class="text-gray-600">
-            Clustering K-Means mengungkapkan pola yang signifikan dalam pergerakan kendaraan. Lokasi-lokasi utama dan tipe peristiwa telah diidentifikasi, memberikan wawasan tentang perilaku kendaraan. Cluster yang dihasilkan menunjukkan variasi dalam waktu dan jarak tempuh, serta preferensi lokasi yang berbeda.
-        </p>
-    </div>
-
-    <div class="mt-6">
-        <h2 class="text-xl font-semibold mb-2 text-gray-700">Rekomendasi</h2>
-        <p class="text-gray-600">
-            1. <strong>Optimasi Rute:</strong> Fokuskan pada lokasi dengan frekuensi tinggi seperti PT_2GHTI26CT2 untuk mengoptimalkan rute dan mengurangi kemacetan.<br>
-            2. <strong>Analisis Lebih Lanjut:</strong> Gunakan data koordinat spasial untuk analisis yang lebih mendalam tentang pola pergerakan.<br>
-            3. <strong>Pemantauan Anomali:</strong> Perhatikan cluster dengan durasi atau jarak tempuh yang sangat tinggi untuk mendeteksi potensi anomali, seperti perjalanan yang tidak efisien.
-        </p>
-    </div>
     

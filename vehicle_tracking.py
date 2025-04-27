@@ -76,6 +76,7 @@ def preprocess_data(data):
             
             duration = duration_to_seconds(row["DURATION"])
             mileage = extract_mileage(row["DESCRIPTION"])
+            efficiency = mileage / (duration / 3600) if duration > 0 else 0  # km/h
             
             processed_row = {
                 "UNIT": row["UNIT"],
@@ -87,7 +88,8 @@ def preprocess_data(data):
                 "HOUR_OF_DAY": begin_date.hour,
                 "DAY_OF_WEEK": begin_date.weekday(),
                 "DURATION_SECONDS": duration,
-                "MILEAGE": mileage
+                "MILEAGE": mileage,
+                "EFFICIENCY": efficiency
             }
             processed_data.append(processed_row)
             total_duration += duration
@@ -96,8 +98,6 @@ def preprocess_data(data):
             print(f"Error memproses baris {row}: {e}")
             continue
     
-    types = [row["TYPE"] for row in processed_data]
-    locations = [row["INITIAL_LOCATION"] for row in processed_data]
     le_type = LabelEncoder()
     le_location = LabelEncoder()
     print("Mengkodekan variabel kategorikal...")
@@ -117,33 +117,58 @@ def preprocess_data(data):
     print("Pemrosesan data selesai.")
     return processed_data, le_type, le_location, stats
 
-# Apply K-Means clustering
+# Apply K-Means clustering with Elbow Method
 def apply_kmeans(data):
     if not data:
         print("Tidak ada data untuk clustering.")
-        return None
+        return None, None
     
-    print(f"Menerapkan clustering K-Means pada {len(data)} data...")
+    print("Menerapkan clustering K-Means...")
     features = []
     for row in tqdm(data, desc="Mengekstrak fitur"):
         features.append([
-            row["DURATION_SECONDS"], row["MILEAGE"], row["HOUR_OF_DAY"], row["DAY_OF_WEEK"],
-            row["TYPE_ENCODED"], row["INITIAL_LOCATION_ENCODED"]
+            row["DURATION_SECONDS"],
+            row["MILEAGE"],
+            row["EFFICIENCY"],
+            row["INITIAL_LOCATION_ENCODED"]
         ])
     
     scaler = StandardScaler()
     scaled_features = scaler.fit_transform(features)
-    kmeans = KMeans(n_clusters=5, random_state=42)
+    
+    # Elbow Method to find optimal number of clusters
+    wcss = []
+    for i in range(1, 11):
+        kmeans = KMeans(n_clusters=i, random_state=42)
+        kmeans.fit(scaled_features)
+        wcss.append(kmeans.inertia_)
+    
+    # Prepare WCSS data for Chart.js
+    elbow_data = [
+        {"clusters": i, "wcss": wcss[i-1]}
+        for i in range(1, 11)
+    ]
+    
+    # Choose optimal clusters (e.g., 4, adjust based on elbow curve)
+    optimal_clusters = 4  # Adjust based on visual inspection or automated method
+    kmeans = KMeans(n_clusters=optimal_clusters, random_state=42)
     clusters = kmeans.fit_predict(scaled_features)
+    
+    # Detect outliers (e.g., points far from cluster centroids)
+    distances = kmeans.transform(scaled_features)
+    max_distances = np.max(distances, axis=1)
+    outlier_threshold = np.percentile(max_distances, 95)  # Top 5% as outliers
+    outliers = max_distances > outlier_threshold
     
     for i, row in tqdm(enumerate(data), total=len(data), desc="Menetapkan label cluster"):
         row["CLUSTER"] = clusters[i]
+        row["IS_OUTLIER"] = bool(outliers[i])
     
     print("Clustering K-Means selesai.")
-    return data
+    return data, elbow_data
 
-# Generate HTML report with Chart.js
-def generate_html_report(data, le_type, le_location, stats):
+# Generate simplified HTML report
+def generate_html_report(data, le_type, le_location, stats, elbow_data):
     if not data:
         print("Tidak ada data untuk membuat laporan.")
         return None
@@ -157,355 +182,340 @@ def generate_html_report(data, le_type, le_location, stats):
         s = "".join(c for c in s if c.isprintable())
         return html.escape(s, quote=True)
     
-    # Aggregate data for visualizations
-    type_counts = {}
-    location_counts = {}
+    # Aggregate data for visualizations and decision-making
     cluster_counts = {}
-    cluster_details = {i: {"duration": [], "mileage": [], "types": [], "locations": []} for i in range(5)}
-    
+    cluster_details = {}
+    location_counts = {}
+    cluster_vehicles = {}  # Track vehicles per cluster for maintenance
+    cluster_anomalies = {}  # Track anomaly details
     for row in tqdm(data, desc="Mengagregasi data"):
-        type_counts[row["TYPE"]] = type_counts.get(row["TYPE"], 0) + 1
-        location_counts[row["INITIAL_LOCATION"]] = location_counts.get(row["INITIAL_LOCATION"], 0) + 1
-        cluster_counts[row["CLUSTER"]] = cluster_counts.get(row["CLUSTER"], 0) + 1
         cluster = row["CLUSTER"]
+        if cluster not in cluster_details:
+            cluster_details[cluster] = {"duration": [], "mileage": [], "efficiency": [], "locations": [], "outliers": 0}
+            cluster_vehicles[cluster] = set()
+            cluster_anomalies[cluster] = []
+        cluster_counts[cluster] = cluster_counts.get(cluster, 0) + 1
         cluster_details[cluster]["duration"].append(row["DURATION_SECONDS"])
         cluster_details[cluster]["mileage"].append(row["MILEAGE"])
-        cluster_details[cluster]["types"].append(row["TYPE"])
+        cluster_details[cluster]["efficiency"].append(row["EFFICIENCY"])
         cluster_details[cluster]["locations"].append(row["INITIAL_LOCATION"])
+        cluster_vehicles[cluster].add(row["UNIT"])
+        if row["IS_OUTLIER"]:
+            cluster_details[cluster]["outliers"] += 1
+            cluster_anomalies[cluster].append({
+                "unit": row["UNIT"],
+                "duration": row["DURATION_SECONDS"],
+                "mileage": row["MILEAGE"],
+                "location": row["INITIAL_LOCATION"]
+            })
+        location_counts[row["INITIAL_LOCATION"]] = location_counts.get(row["INITIAL_LOCATION"], 0) + 1
     
-    # Batasi cluster ke top 3 dan kelompokkan sisanya ke "Lainnya"
-    top_clusters = sorted(cluster_counts.items(), key=lambda x: x[1], reverse=True)[:3]
-    other_count = sum(v for k, v in cluster_counts.items() if k not in [x[0] for x in top_clusters])
-    if other_count > 0:
-        top_clusters.append((-1, other_count))
-    
-    type_chart_data = [{"type": clean_string(k), "count": v} for k, v in type_counts.items()]
-    location_chart_data = [
-        {"location": clean_string(k), "count": v} for k, v in
-        sorted(location_counts.items(), key=lambda x: x[1], reverse=True)[:3]
-    ]
-    cluster_chart_data = [
-        {"cluster": clean_string("Lainnya" if k == -1 else str(k)), "count": v} for k, v in top_clusters
-    ]
-    
-    # Hitung detail statistik untuk setiap cluster
-    cluster_stats = []
-    for cluster_id in range(5):
+    # Cluster summaries and labels
+    cluster_summaries = []
+    for cluster_id in cluster_details:
         details = cluster_details[cluster_id]
-        if not details["duration"]:
-            continue
         avg_duration = np.mean(details["duration"])
         avg_mileage = np.mean(details["mileage"])
-        most_common_type = pd.Series(details["types"]).mode()[0] if details["types"] else "Tidak ada"
-        most_common_location = pd.Series(details["locations"]).mode()[0] if details["locations"] else "Tidak ada"
-        cluster_stats.append({
-            "cluster": cluster_id,
-            "count": cluster_counts.get(cluster_id, 0),
-            "avg_duration": round(avg_duration),
+        avg_efficiency = np.mean(details["efficiency"])
+        top_location = pd.Series(details["locations"]).mode()[0] if details["locations"] else "Tidak ada"
+        
+        # Label clusters based on characteristics
+        if avg_duration > 3600 and avg_mileage > 50:
+            cluster_label = "Perjalanan Jarak Jauh"
+            insight = f"Perjalanan ini panjang (rata-rata {round(avg_duration/3600, 1)} jam, {avg_mileage:.1f} km), memerlukan perawatan kendaraan."
+            action = f"Jadwalkan perawatan untuk {len(cluster_vehicles[cluster_id])} kendaraan: {', '.join(list(cluster_vehicles[cluster_id])[:3] or ['Tidak ada'])}..."
+        elif avg_duration < 600 and avg_mileage < 10:
+            cluster_label = "Parkir Singkat"
+            insight = f"Berhenti singkat (rata-rata {round(avg_duration/60)} menit) menunjukkan aktivitas pengiriman/layanan."
+            action = f"Tinjau jadwal untuk {len(cluster_vehicles[cluster_id])} kendaraan di {top_location} agar lebih efisien."
+        elif avg_efficiency < 10:
+            cluster_label = "Perjalanan Tidak Efisien"
+            insight = f"Efisiensi rendah ({avg_efficiency:.1f} km/jam) menunjukkan kemacetan atau rute buruk di {top_location}."
+            action = f"Gunakan rute alternatif berbasis lalu lintas untuk {len(cluster_vehicles[cluster_id])} kendaraan."
+        else:
+            cluster_label = "Perjalanan Reguler"
+            insight = f"Perjalanan seimbang (durasi {round(avg_duration/60)} menit, {avg_mileage:.1f} km) di {top_location}."
+            action = f"Pantau {len(cluster_vehicles[cluster_id])} kendaraan untuk penggunaan bahan bakar optimal."
+        
+        cluster_summaries.append({
+            "cluster": int(cluster_id),  # Ensure Python int
+            "label": cluster_label,
+            "count": int(cluster_counts.get(cluster_id, 0)),  # Convert to Python int
+            "avg_duration": round(avg_duration / 60),  # Convert to minutes
             "avg_mileage": "{:.2f}".format(avg_mileage),
-            "most_common_type": clean_string(most_common_type),
-            "most_common_location": clean_string(most_common_location)
+            "avg_efficiency": "{:.2f}".format(avg_efficiency),
+            "top_location": clean_string(top_location),
+            "outliers": int(details["outliers"]),  # Convert to Python int
+            "vehicles": list(cluster_vehicles[cluster_id])[:3],  # Limit to 3 for display
+            "insight": insight,
+            "action": action
         })
     
+    # Top locations for route optimization
+    top_locations = [
+        {"location": clean_string(k), "count": int(v)}  # Convert count to Python int
+        for k, v in sorted(location_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+    ]
+    
+    # Cluster chart data
+    cluster_chart_data = [
+        {"cluster": f"Kelompok {s['cluster']} ({s['label']})", "count": s['count']}
+        for s in cluster_summaries
+    ]
+    
+    # Anomaly details for detection
+    anomaly_details = []
+    for cluster_id, anomalies in cluster_anomalies.items():
+        for anomaly in anomalies[:3]:  # Limit to 3 per cluster for brevity
+            anomaly_details.append({
+                "cluster": int(cluster_id),
+                "unit": clean_string(anomaly["unit"]),
+                "duration": round(anomaly["duration"] / 60),
+                "mileage": "{:.2f}".format(anomaly["mileage"]),
+                "location": clean_string(anomaly["location"])
+            })
+    
     try:
-        type_chart_json = json.dumps(type_chart_data, ensure_ascii=False)
-        location_chart_json = json.dumps(location_chart_data, ensure_ascii=False)
-        cluster_chart_json = json.dumps(cluster_chart_data, ensure_ascii=False)
-        cluster_stats_json = json.dumps(cluster_stats, ensure_ascii=False)
+        # Custom default function to handle NumPy types
+        def json_default(obj):
+            if isinstance(obj, np.integer):
+                return int(obj)
+            if isinstance(obj, np.floating):
+                return float(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+        
+        cluster_chart_json = json.dumps(cluster_chart_data, ensure_ascii=False, default=json_default)
+        location_chart_json = json.dumps(top_locations, ensure_ascii=False, default=json_default)
+        cluster_summaries_json = json.dumps(cluster_summaries, ensure_ascii=False, default=json_default)
+        elbow_data_json = json.dumps(elbow_data, ensure_ascii=False, default=json_default)
+        anomaly_details_json = json.dumps(anomaly_details, ensure_ascii=False, default=json_default)
     except Exception as e:
         print(f"Error saat membuat JSON: {e}")
         return None
     
-    # Preprocess top location for "Fakta Menarik"
-    top_location = location_chart_data[0]['location'] if location_chart_data else 'Tidak ada data'
-    top_location_count = location_chart_data[0]['count'] if location_chart_data else 0
-
     html_content = f"""
-    <script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {{}};
-        var gk_fileData = {{}};
-        function filledCell(cell) {{
-            return cell !== '' && cell != null;
-        }}
-        function loadFileData(filename) {{
-            if (gk_isXlsx && gk_xlsxFileLookup[filename]) {{
-                try {{
-                    var workbook = XLSX.read(gk_fileData[filename], {{ type: 'base64' }});
-                    var firstSheetName = workbook.SheetNames[0];
-                    var worksheet = workbook.Sheets[firstSheetName];
-                    var jsonData = XLSX.utils.sheet_to_json(worksheet, {{ header: 1, blankrows: false, defval: '' }});
-                    var filteredData = jsonData.filter(row => row.some(filledCell));
-                    var headerRowIndex = filteredData.findIndex((row, index) =>
-                      row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                    );
-                    if (headerRowIndex === -1 || headerRowIndex > 25) {{
-                      headerRowIndex = 0;
-                    }}
-                    var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
-                    csv = XLSX.utils.sheet_to_csv(csv, {{ header: 1 }});
-                    return csv;
-                }} catch (e) {{
-                    console.error(e);
-                    return "";
-                }}
-            }}
-            return gk_fileData[filename] || "";
-        }}
-    </script>
     <!DOCTYPE html>
     <html lang="id">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Laporan Analisis Pelacakan Kendaraan</title>
-        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+        <title>Laporan Pelacakan Kendaraan</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
             body {{
-                font-family: 'Poppins', sans-serif;
-                background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
+                font-family: 'Inter', sans-serif;
+                background: #f7fafc;
                 margin: 0;
                 padding: 24px;
-                font-size: 16px;
             }}
-            .chart-container {{
-                margin: 12px 0;
-                max-width: 600px;
-                background: white;
-                border-radius: 12px;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-                padding: 16px;
-            }}
-            .error {{
-                color: #ef4444;
-                font-weight: 600;
-            }}
-            .chart {{
-                width: 100%;
-                height: 300px !important;
-            }}
-            .section-title {{
-                color: #1f2937;
-                border-bottom: 3px solid #3b82f6;
-                padding-bottom: 6px;
-            }}
-            .report-container {{
-                background: white;
-                border-radius: 16px;
-                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
-                padding: 24px;
+            .container {{
                 max-width: 900px;
                 margin: 0 auto;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                padding: 24px;
+            }}
+            .chart {{
+                height: 200px !important;
+            }}
+            .tooltip {{
+                position: relative;
+                display: inline-block;
+                cursor: pointer;
+            }}
+            .tooltip .tooltiptext {{
+                visibility: hidden;
+                width: 250px;
+                background-color: #4a5568;
+                color: white;
+                text-align: center;
+                border-radius: 4px;
+                padding: 8px;
+                position: absolute;
+                z-index: 1;
+                bottom: 125%;
+                left: 50%;
+                margin-left: -125px;
+                opacity: 0;
+                transition: opacity 0.3s;
+            }}
+            .tooltip:hover .tooltiptext {{
+                visibility: visible;
+                opacity: 1;
+            }}
+            .section {{
+                border-left: 4px solid #4a90e2;
+                padding-left: 16px;
+                margin-bottom: 24px;
             }}
         </style>
     </head>
     <body>
-        <div id="root" class="report-container"></div>
-        <div id="error" class="error" style="display: none;"></div>
+        <div class="container">
+            <h1 class="text-2xl font-semibold text-gray-800 mb-4">Laporan Pelacakan Kendaraan</h1>
+            <p class="text-gray-600 mb-6">
+                Laporan ini mengelompokkan data pergerakan kendaraan untuk membantu Anda mengambil keputusan penting seperti menghemat bahan bakar, menjaga kondisi kendaraan, menemukan masalah, dan meningkatkan efisiensi operasional.
+            </p>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Ringkasan Data</h2>
+                <p class="text-gray-600">
+                    <strong>Jumlah Peristiwa:</strong> {stats['total_rows']}<br>
+                    <strong>Rata-rata Durasi:</strong> {stats['avg_duration']} detik<br>
+                    <strong>Rata-rata Jarak:</strong> {stats['avg_mileage']} km
+                </p>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">1. Optimasi Rute</h2>
+                <p class="text-gray-600 mb-4">
+                    Bagian ini membantu mengurangi waktu dan bahan bakar dengan memilih jalur terbaik berdasarkan lokasi yang sering dikunjungi dan efisiensi perjalanan.
+                </p>
+                <canvas id="location-chart" class="chart mb-4"></canvas>
+                <ul class="list-disc pl-5 text-gray-600">
+                    {"".join(f'<li><strong>{loc["location"]}</strong>: Dikunjungi {loc["count"]} kali. Pertimbangkan jalur alternatif untuk mengurangi kemacetan.</li>' for loc in top_locations)}
+                    {"".join(f'<li><strong>Kelompok {s["cluster"]} ({s["label"]})</strong>: Efisiensi {s["avg_efficiency"]} km/jam. {s["action"]}</li>' for s in cluster_summaries if s["label"] == "Perjalanan Tidak Efisien")}
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">2. Perencanaan Perawatan</h2>
+                <p class="text-gray-600 mb-4">
+                    Bagian ini mengidentifikasi kendaraan yang sering melakukan perjalanan jauh untuk memastikan perawatan tepat waktu, mencegah kerusakan.
+                </p>
+                <canvas id="cluster-chart" class="chart mb-4"></canvas>
+                <ul class="list-disc pl-5 text-gray-600">
+                    {"".join(f'<li><strong>Kelompok {s["cluster"]} ({s["label"]})</strong>: {s["insight"]} <span class="tooltip">📋<span class="tooltiptext">{s["action"]}</span></span></li>' for s in cluster_summaries if s["label"] == "Perjalanan Jarak Jauh")}
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">3. Deteksi Anomali</h2>
+                <p class="text-gray-600 mb-4">
+                    Bagian ini menemukan perjalanan atau parkir yang tidak biasa (anomali) untuk ditindaklanjuti, seperti kesalahan pengemudi atau masalah kendaraan.
+                </p>
+                <ul class="list-disc pl-5 text-gray-600">
+                    {"".join(f'<li>Kendaraan <strong>{a["unit"]}</strong> di Kelompok {a["cluster"]}: Durasi {a["duration"]} menit, Jarak {a["mileage"]} km di {a["location"]}. Periksa apakah ini normal.</li>' for a in anomaly_details)}
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">4. Peningkatan Efisiensi</h2>
+                <p class="text-gray-600 mb-4">
+                    Bagian ini membantu mengurangi waktu parkir atau perjalanan tidak efisien untuk menghemat biaya operasional.
+                </p>
+                <ul class="list-disc pl-5 text-gray-600">
+                    {"".join(f'<li><strong>Kelompok {s["cluster"]} ({s["label"]})</strong>: {s["insight"]} <span class="tooltip">📋<span class="tooltiptext">{s["action"]}</span></span></li>' for s in cluster_summaries if s["label"] in ["Parkir Singkat", "Perjalanan Tidak Efisien"])}
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Kurva Elbow (Jumlah Kelompok Optimal)</h2>
+                <p class="text-gray-600 mb-4">
+                    Grafik ini menunjukkan jumlah kelompok yang ideal untuk mengelompokkan data kendaraan.
+                </p>
+                <canvas id="elbow-chart" class="chart"></canvas>
+            </div>
+
+            <div class="section">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Ringkasan Kelompok</h2>
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="p-2">Kelompok</th>
+                            <th class="p-2">Jumlah</th>
+                            <th class="p-2">Durasi (menit)</th>
+                            <th class="p-2">Jarak (km)</th>
+                            <th class="p-2">Efisiensi (km/jam)</th>
+                            <th class="p-2">Lokasi Utama</th>
+                            <th class="p-2">Anomali</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {"".join(f'<tr><td class="p-2">{s["label"]}</td><td class="p-2">{s["count"]}</td><td class="p-2">{s["avg_duration"]}</td><td class="p-2">{s["avg_mileage"]}</td><td class="p-2">{s["avg_efficiency"]}</td><td class="p-2">{s["top_location"]}</td><td class="p-2">{s["outliers"]}</td></tr>' for s in cluster_summaries)}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <script>
-            Chart.register(ChartDataLabels);
-            const typeChartData = {type_chart_json};
             const locationChartData = {location_chart_json};
             const clusterChartData = {cluster_chart_json};
-            const clusterStats = {cluster_stats_json};
-            const stats = {json.dumps(stats, ensure_ascii=False)};
-
-            function showError(message) {{
-                const errorDiv = document.getElementById('error');
-                errorDiv.style.display = 'block';
-                errorDiv.textContent = message;
-            }}
-
-            function formatNumber(value) {{
-                if (value >= 1000000) return (value / 1000000) + 'M';
-                if (value >= 1000) return (value / 1000) + 'K';
-                return value;
-            }}
+            const elbowData = {elbow_data_json};
+            const anomalyDetails = {anomaly_details_json};
 
             function createBarChart(canvasId, data, labelKey, color) {{
-                try {{
-                    const truncatedLabels = data.map(item => {{
-                        const label = item[labelKey];
-                        return label.length > 10 ? label.substring(0, 8) + '...' : label;
-                    }});
-                    const ctx = document.getElementById(canvasId).getContext('2d');
-                    new Chart(ctx, {{
-                        type: 'bar',
-                        data: {{
-                            labels: truncatedLabels,
-                            datasets: [{{
-                                label: 'Jumlah',
-                                data: data.map(item => item.count),
-                                backgroundColor: color,
-                                borderColor: color,
-                                borderWidth: 1
-                            }}]
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                new Chart(ctx, {{
+                    type: 'bar',
+                    data: {{
+                        labels: data.map(item => item[labelKey].length > 15 ? item[labelKey].substring(0, 12) + '...' : item[labelKey]),
+                        datasets: [{{
+                            label: 'Jumlah',
+                            data: data.map(item => item.count),
+                            backgroundColor: color,
+                            borderColor: color,
+                            borderWidth: 1
+                        }}]
+                    }},
+                    options: {{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {{
+                            y: {{ beginAtZero: true, title: {{ display: true, text: 'Jumlah' }} }},
+                            x: {{ title: {{ display: true, text: labelKey.charAt(0).toUpperCase() + labelKey.slice(1) }} }}
                         }},
-                        options: {{
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            animation: {{
-                                duration: 1000,
-                                easing: 'easeOutQuart'
-                            }},
-                            scales: {{
-                                y: {{
-                                    beginAtZero: true,
-                                    max: 100000,
-                                    title: {{ display: true, text: 'Jumlah', font: {{ size: 14, family: 'Poppins' }} }},
-                                    ticks: {{
-                                        font: {{ size: 12, family: 'Poppins' }},
-                                        callback: function(value) {{
-                                            return formatNumber(value);
-                                        }}
-                                    }}
-                                }},
-                                x: {{
-                                    title: {{ display: true, text: labelKey.charAt(0).toUpperCase() + labelKey.slice(1), font: {{ size: 14, family: 'Poppins' }} }},
-                                    ticks: {{
-                                        font: {{ size: 12, family: 'Poppins' }},
-                                        autoSkip: true,
-                                        maxTicksLimit: 4,
-                                        maxRotation: 0,
-                                        minRotation: 0
-                                    }}
-                                }}
-                            }},
-                            plugins: {{
-                                legend: {{
-                                    display: true,
-                                    labels: {{ font: {{ size: 12, family: 'Poppins' }} }}
-                                }},
-                                tooltip: {{
-                                    enabled: true,
-                                    bodyFont: {{ size: 12, family: 'Poppins' }},
-                                    callbacks: {{
-                                        label: function(context) {{
-                                            return context.dataset.label + ': ' + formatNumber(context.raw);
-                                        }}
-                                    }}
-                                }},
-                                datalabels: {{
-                                    anchor: 'end',
-                                    align: 'top',
-                                    font: {{ size: 12, family: 'Poppins', weight: '600' }},
-                                    formatter: function(value) {{
-                                        return formatNumber(value);
-                                    }},
-                                    color: '#1f2937'
-                                }}
-                            }},
-                            layout: {{
-                                padding: {{ bottom: 5, top: 30 }}
-                            }}
+                        plugins: {{
+                            legend: {{ display: false }},
+                            tooltip: {{ enabled: true }}
                         }}
-                    }});
-                }} catch (e) {{
-                    showError(`Error saat membuat chart: ${{e.toString()}}`);
-                }}
-            }}
-
-            function renderReport() {{
-                try {{
-                    if (!Array.isArray(clusterStats)) {{
-                        throw new Error('clusterStats is not an array');
                     }}
-                    const root = document.getElementById('root');
-                    root.innerHTML = `
-                        <h1 class="text-3xl font-semibold mb-4 text-gray-800 section-title">Laporan Analisis Pelacakan Kendaraan</h1>
-                        <p class="mb-4 text-gray-600">
-                            Laporan ini menganalisis data pelacakan kendaraan menggunakan algoritma clustering K-Means untuk mengidentifikasi pola dalam perjalanan dan parkir. Laporan mencakup distribusi tipe peristiwa, lokasi teratas, distribusi cluster, dan analisis mendalam tentang pola yang ditemukan.
-                        </p>
-
-                        <div class="mt-6">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Statistik Dasar</h2>
-                            <p class="text-gray-600">
-                                <strong>Jumlah Total Peristiwa:</strong> {stats['total_rows']}<br>
-                                <strong>Rata-rata Durasi Peristiwa:</strong> {stats['avg_duration']} detik<br>
-                                <strong>Rata-rata Jarak Tempuh:</strong> {stats['avg_mileage']} km
-                            </p>
-                        </div>
-
-                        <div id="type-chart" class="chart-container">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Distribusi Tipe Peristiwa</h2>
-                            <canvas id="type-chart-canvas" class="chart"></canvas>
-                        </div>
-
-                        <div id="location-chart" class="chart-container">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">3 Lokasi Teratas</h2>
-                            <canvas id="location-chart-canvas" class="chart"></canvas>
-                        </div>
-
-                        <div id="cluster-chart" class="chart-container">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Distribusi Cluster Teratas</h2>
-                            <canvas id="cluster-chart-canvas" class="chart"></canvas>
-                        </div>
-
-                        <div class="mt-6">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Fakta Menarik</h2>
-                            <p class="text-gray-600">
-                                Lokasi <strong class="text-blue-600">{top_location}</strong> adalah lokasi yang paling sering dikunjungi, dengan <strong class="text-blue-600">{top_location_count}</strong> peristiwa, menunjukkan bahwa lokasi ini kemungkinan merupakan titik parkir utama atau pusat aktivitas.
-                            </p>
-                        </div>
-
-                        <div class="mt-6">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Detail Cluster</h2>
-                            <div class="grid grid-cols-1 gap-4">
-                    `;
-
-                    createBarChart('type-chart-canvas', typeChartData, 'type', '#6366f1');
-                    createBarChart('location-chart-canvas', locationChartData, 'location', '#34d399');
-                    createBarChart('cluster-chart-canvas', clusterChartData, 'cluster', '#fb923c');
-                }} catch (e) {{
-                    showError(`Error saat membuat laporan: ${{e.toString()}}`);
-                }}
+                }});
             }}
 
-            document.addEventListener('DOMContentLoaded', renderReport);
+            function createElbowChart(canvasId, data) {{
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                new Chart(ctx, {{
+                    type: 'line',
+                    data: {{
+                        labels: data.map(item => item.clusters),
+                        datasets: [{{
+                            label: 'WCSS',
+                            data: data.map(item => item.wcss),
+                            borderColor: '#38a169',
+                            backgroundColor: 'rgba(56, 161, 105, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }}]
+                    }},
+                    options: {{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {{
+                            y: {{ beginAtZero: false, title: {{ display: true, text: 'WCSS' }} }},
+                            x: {{ title: {{ display: true, text: 'Jumlah Kelompok' }} }}
+                        }},
+                        plugins: {{
+                            legend: {{ display: true }},
+                            tooltip: {{ enabled: true }}
+                        }}
+                    }}
+                }});
+            }}
+
+            createBarChart('location-chart', locationChartData, 'location', '#4a90e2');
+            createBarChart('cluster-chart', clusterChartData, 'cluster', '#e53e3e');
+            createElbowChart('elbow-chart', elbowData);
         </script>
     </body>
     </html>
     """
-
-    # Generate cluster details statically in Python
-    cluster_html = ""
-    for stat in cluster_stats:
-        cluster_html += f"""
-            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
-                <h3 class="text-lg font-semibold text-gray-700">Cluster {stat['cluster']}</h3>
-                <p class="text-gray-600">
-                    <strong>Jumlah Peristiwa:</strong> {stat['count']}<br>
-                    <strong>Rata-rata Durasi:</strong> {stat['avg_duration']} detik<br>
-                    <strong>Rata-rata Jarak Tempuh:</strong> {stat['avg_mileage']} km<br>
-                    <strong>Tipe Peristiwa Terbanyak:</strong> {stat['most_common_type']}<br>
-                    <strong>Lokasi Terbanyak:</strong> {stat['most_common_location']}
-                </p>
-            </div>
-        """
-    html_content += cluster_html + f"""
-        </div>
-    </div>
-
-    <div class="mt-6">
-        <h2 class="text-xl font-semibold mb-2 text-gray-700">Kesimpulan</h2>
-        <p class="text-gray-600">
-            Clustering K-Means mengungkapkan pola yang signifikan dalam pergerakan kendaraan. Lokasi-lokasi utama dan tipe peristiwa telah diidentifikasi, memberikan wawasan tentang perilaku kendaraan. Cluster yang dihasilkan menunjukkan variasi dalam waktu dan jarak tempuh, serta preferensi lokasi yang berbeda.
-        </p>
-    </div>
-
-    <div class="mt-6">
-        <h2 class="text-xl font-semibold mb-2 text-gray-700">Rekomendasi</h2>
-        <p class="text-gray-600">
-            1. <strong>Optimasi Rute:</strong> Fokuskan pada lokasi dengan frekuensi tinggi seperti {top_location} untuk mengoptimalkan rute dan mengurangi kemacetan.<br>
-            2. <strong>Analisis Lebih Lanjut:</strong> Gunakan data koordinat spasial untuk analisis yang lebih mendalam tentang pola pergerakan.<br>
-            3. <strong>Pemantauan Anomali:</strong> Perhatikan cluster dengan durasi atau jarak tempuh yang sangat tinggi untuk mendeteksi potensi anomali, seperti perjalanan yang tidak efisien.
-        </p>
-    </div>
-    """
-
+    
     with open("vehicle_tracking_report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
     print("Pembuatan laporan HTML selesai.")
@@ -528,13 +538,13 @@ def main():
         return
     
     # Langkah 3: Apply clustering
-    clustered_data = apply_kmeans(processed_data)
+    clustered_data, elbow_data = apply_kmeans(processed_data)
     if clustered_data is None:
         print("Gagal menerapkan clustering. Keluar.")
         return
     
     # Langkah 4: Generate report
-    generate_html_report(clustered_data, le_type, le_location, stats)
+    generate_html_report(clustered_data, le_type, le_location, stats, elbow_data)
     print("Analisis pelacakan kendaraan selesai.")
 
 if __name__ == "__main__":
