@@ -250,6 +250,7 @@ project_directory/
 
 ### Hasil Soal 1
 - **Output**: GUI menampilkan video dengan:
+  - Frame rate video yang di hasilkan kurang dari 30 FPS
   - Bounding box di sekitar objek yang terdeteksi, berwarna sesuai kelas (`Ripe`: hijau, `Unripe`: kuning, dll.).
   - ID pelacakan dan kecepatan vertikal (vy) pada setiap bounding box.
   - Garis penghitung merah pada posisi Y yang ditentukan.
@@ -265,7 +266,7 @@ project_directory/
     - Pratinjau (klik untuk memutar di YouTube):  
       [![](https://img.youtube.com/vi/KJyNu4lUbdk/0.jpg)](https://youtu.be/KJyNu4lUbdk)
     
-    - Deskripsi: Menunjukkan hasil inference sesuai spesifikasi awal (setiap 30 frame, ~1 detik pada 30 FPS), yang mungkin memiliki pelacakan kurang akurat tetapi lebih hemat sumber daya. [Unduh file lokal](./video/precessed-30-frame.mp4).
+    - Deskripsi: Menunjukkan hasil inference sesuai spesifikasi awal (setiap 30 frame), yang mungkin memiliki pelacakan kurang akurat tetapi lebih hemat sumber daya. [Unduh file lokal](./video/precessed-30-frame.mp4).
       
 - **Performa**:
   - Akurasi deteksi bergantung pada model YOLO ([`22K-5-M.pt`](./model/22K-5-M.pt)). Berdasarkan [`analisis.md`](./analisis.md), model memiliki mAP@50 55,4%, dengan performa baik pada Kelas 0 (`Ripe`) tetapi buruk pada Kelas 3 (`Rotten`).
@@ -334,5 +335,3 @@ project_directory/
   - Kredensial Snowflake harus divalidasi sebelum menjalankan [`vehicle_tracking.py`](./vehicle_tracking.py).
   - Jumlah klaster (4) dipilih berdasarkan kurva Elbow, tetapi dapat disesuaikan dengan inspeksi visual atau metode otomatis (misalnya, Silhouette Score).
   - File [`vehicle_tracking_report.html`](./vehicle_tracking_report.html) bergantung pada CDN untuk Chart.js dan Tailwind CSS. Untuk penggunaan offline, unduh dependensi dan sesuaikan `<script>` dan `<link>` di file tersebut.
-
-Untuk pertanyaan atau bantuan lebih lanjut, silakan hubungi pengelola proyek.
