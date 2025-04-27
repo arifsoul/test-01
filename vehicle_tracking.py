@@ -1,13 +1,13 @@
 import snowflake.connector
 import numpy as np
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import datetime
 import pandas as pd
 import re
 import html
 import json
-from tqdm import tqdm  # Import tqdm untuk progress bar
+from tqdm import tqdm
 
 # Snowflake connection parameters
 conn = snowflake.connector.connect(
@@ -20,7 +20,7 @@ conn = snowflake.connector.connect(
 
 # Function to fetch data from Snowflake
 def fetch_data_from_snowflake():
-    print("Fetching data from Snowflake...")
+    print("Mengambil data dari Snowflake...")
     try:
         cursor = conn.cursor()
         query = "SELECT * FROM tr_track"
@@ -28,10 +28,10 @@ def fetch_data_from_snowflake():
         columns = [col[0] for col in cursor.description]
         results = cursor.fetchall()
         df = pd.DataFrame(results, columns=columns)
-        print(f"Successfully fetched {len(df)} rows from Snowflake.")
+        print(f"Berhasil mengambil {len(df)} baris data dari Snowflake.")
         return df
     except Exception as e:
-        print(f"Error connecting to Snowflake: {e}")
+        print(f"Error saat mengambil data dari Snowflake: {e}")
         return None
 
 # Convert duration (HH:MM:SS) to seconds
@@ -53,7 +53,7 @@ def extract_mileage(description):
 
 # Preprocessing and feature engineering
 def preprocess_data(data):
-    print("Preprocessing data...")
+    print("Memproses data...")
     filtered_data = data[
         data["UNIT"].notnull() & 
         data["TYPE"].notnull() & 
@@ -62,16 +62,20 @@ def preprocess_data(data):
     ]
     
     if filtered_data.empty:
-        print("No valid data after filtering.")
-        return None, None, None
+        print("Tidak ada data yang valid setelah penyaringan.")
+        return None, None, None, None
     
-    print(f"Filtered {len(filtered_data)} rows for processing.")
+    print(f"Menemukan {len(filtered_data)} baris data untuk diproses.")
     processed_data = []
-    # Gunakan tqdm untuk menampilkan progress bar saat memproses baris
-    for _, row in tqdm(filtered_data.iterrows(), total=len(filtered_data), desc="Processing rows"):
+    total_duration = 0
+    total_mileage = 0
+    for _, row in tqdm(filtered_data.iterrows(), total=len(filtered_data), desc="Memproses baris data"):
         try:
             begin_date = row["DATE_TIME_BEGIN"].to_pydatetime() if isinstance(row["DATE_TIME_BEGIN"], pd.Timestamp) else datetime.datetime.strptime(row["DATE_TIME_BEGIN"], "%Y-%m-%d %H:%M:%S")
             end_date = row["DATE_TIME_END"].to_pydatetime() if isinstance(row["DATE_TIME_END"], pd.Timestamp) else datetime.datetime.strptime(row["DATE_TIME_END"], "%Y-%m-%d %H:%M:%S")
+            
+            duration = duration_to_seconds(row["DURATION"])
+            mileage = extract_mileage(row["DESCRIPTION"])
             
             processed_row = {
                 "UNIT": row["UNIT"],
@@ -82,37 +86,46 @@ def preprocess_data(data):
                 "DATE_TIME_END": end_date,
                 "HOUR_OF_DAY": begin_date.hour,
                 "DAY_OF_WEEK": begin_date.weekday(),
-                "DURATION_SECONDS": duration_to_seconds(row["DURATION"]),
-                "MILEAGE": extract_mileage(row["DESCRIPTION"])
+                "DURATION_SECONDS": duration,
+                "MILEAGE": mileage
             }
             processed_data.append(processed_row)
+            total_duration += duration
+            total_mileage += mileage
         except Exception as e:
-            print(f"Error processing row {row}: {e}")
+            print(f"Error memproses baris {row}: {e}")
             continue
     
     types = [row["TYPE"] for row in processed_data]
     locations = [row["INITIAL_LOCATION"] for row in processed_data]
     le_type = LabelEncoder()
     le_location = LabelEncoder()
-    # Gunakan tqdm untuk encoding
-    print("Encoding categorical variables...")
-    for row in tqdm(processed_data, desc="Encoding labels"):
+    print("Mengkodekan variabel kategorikal...")
+    for row in tqdm(processed_data, desc="Mengkodekan label"):
         row["TYPE_ENCODED"] = le_type.fit_transform([row["TYPE"]])[0]
         row["INITIAL_LOCATION_ENCODED"] = le_location.fit_transform([row["INITIAL_LOCATION"]])[0]
     
-    print("Preprocessing completed.")
-    return processed_data, le_type, le_location
+    # Hitung statistik dasar
+    avg_duration = total_duration / len(processed_data) if processed_data else 0
+    avg_mileage = total_mileage / len(processed_data) if processed_data else 0
+    stats = {
+        "total_rows": len(processed_data),
+        "avg_duration": round(avg_duration),
+        "avg_mileage": "{:.2f}".format(avg_mileage)
+    }
+    
+    print("Pemrosesan data selesai.")
+    return processed_data, le_type, le_location, stats
 
-# Apply DBSCAN clustering
-def apply_dbscan(data):
+# Apply K-Means clustering
+def apply_kmeans(data):
     if not data:
-        print("No data for clustering.")
+        print("Tidak ada data untuk clustering.")
         return None
     
-    print(f"Applying DBSCAN clustering to {len(data)} data points...")
+    print(f"Menerapkan clustering K-Means pada {len(data)} data...")
     features = []
-    # Gunakan tqdm untuk membuat fitur
-    for row in tqdm(data, desc="Extracting features"):
+    for row in tqdm(data, desc="Mengekstrak fitur"):
         features.append([
             row["DURATION_SECONDS"], row["MILEAGE"], row["HOUR_OF_DAY"], row["DAY_OF_WEEK"],
             row["TYPE_ENCODED"], row["INITIAL_LOCATION_ENCODED"]
@@ -120,14 +133,13 @@ def apply_dbscan(data):
     
     scaler = StandardScaler()
     scaled_features = scaler.fit_transform(features)
-    dbscan = DBSCAN(eps=0.5, min_samples=5)
-    clusters = dbscan.fit_predict(scaled_features)
+    kmeans = KMeans(n_clusters=5, random_state=42)
+    clusters = kmeans.fit_predict(scaled_features)
     
-    # Gunakan tqdm untuk menambahkan label cluster
-    for i, row in tqdm(enumerate(data), total=len(data), desc="Assigning clusters"):
+    for i, row in tqdm(enumerate(data), total=len(data), desc="Menetapkan label cluster"):
         row["CLUSTER"] = clusters[i]
     
-    print("DBSCAN clustering completed.")
+    print("Clustering K-Means selesai.")
     return data
 
 # Generate HTML report with Chart.js
@@ -195,14 +207,26 @@ def generate_html_report(data, le_type, le_location, stats):
             "most_common_location": clean_string(most_common_location)
         })
     
-    # Generate HTML using f-string
+    try:
+        type_chart_json = json.dumps(type_chart_data, ensure_ascii=False)
+        location_chart_json = json.dumps(location_chart_data, ensure_ascii=False)
+        cluster_chart_json = json.dumps(cluster_chart_data, ensure_ascii=False)
+        cluster_stats_json = json.dumps(cluster_stats, ensure_ascii=False)
+    except Exception as e:
+        print(f"Error saat membuat JSON: {e}")
+        return None
+    
+    # Preprocess top location for "Fakta Menarik"
+    top_location = location_chart_data[0]['location'] if location_chart_data else 'Tidak ada data'
+    top_location_count = location_chart_data[0]['count'] if location_chart_data else 0
+
     html_content = f"""
     <script type="text/javascript">
         var gk_isXlsx = false;
         var gk_xlsxFileLookup = {{}};
         var gk_fileData = {{}};
         function filledCell(cell) {{
-          return cell !== '' && cell != null;
+            return cell !== '' && cell != null;
         }}
         function loadFileData(filename) {{
             if (gk_isXlsx && gk_xlsxFileLookup[filename]) {{
@@ -283,11 +307,11 @@ def generate_html_report(data, le_type, le_location, stats):
         <div id="error" class="error" style="display: none;"></div>
         <script>
             Chart.register(ChartDataLabels);
-            const typeChartData = [{','.join(f'{{ "type": "{item["type"]}", "count": {item["count"]} }}' for item in type_chart_data) if type_chart_data else ''}];
-            const locationChartData = [{','.join(f'{{ "location": "{item["location"]}", "count": {item["count"]} }}' for item in location_chart_data) if location_chart_data else ''}];
-            const clusterChartData = [{','.join(f'{{ "cluster": "{item["cluster"]}", "count": {item["count"]} }}' for item in cluster_chart_data) if cluster_chart_data else ''}];
-            const clusterStats = [{','.join(f'{{ "cluster": {item["cluster"]}, "count": {item["count"]}, "avg_duration": {item["avg_duration"]}, "avg_mileage": "{item["avg_mileage"]}", "most_common_type": "{item["most_common_type"]}", "most_common_location": "{item["most_common_location"]}" }}' for item in cluster_stats) if cluster_stats else ''}];
-            const stats = {{ total_rows: {stats['total_rows']}, avg_duration: {stats['avg_duration']}, avg_mileage: "{stats['avg_mileage']}" }};
+            const typeChartData = {type_chart_json};
+            const locationChartData = {location_chart_json};
+            const clusterChartData = {cluster_chart_json};
+            const clusterStats = {cluster_stats_json};
+            const stats = {json.dumps(stats, ensure_ascii=False)};
 
             function showError(message) {{
                 const errorDiv = document.getElementById('error');
@@ -423,47 +447,13 @@ def generate_html_report(data, le_type, le_location, stats):
                         <div class="mt-6">
                             <h2 class="text-xl font-semibold mb-2 text-gray-700">Fakta Menarik</h2>
                             <p class="text-gray-600">
-                                Lokasi <strong class="text-blue-600">{clean_string(location_chart_data[0]['location'] if location_chart_data else 'Tidak ada data')}</strong> adalah lokasi yang paling sering dikunjungi, dengan <strong class="text-blue-600">{location_chart_data[0]['count'] if location_chart_data else 0}</strong> peristiwa, menunjukkan bahwa lokasi ini kemungkinan merupakan titik parkir utama atau pusat aktivitas.
+                                Lokasi <strong class="text-blue-600">{top_location}</strong> adalah lokasi yang paling sering dikunjungi, dengan <strong class="text-blue-600">{top_location_count}</strong> peristiwa, menunjukkan bahwa lokasi ini kemungkinan merupakan titik parkir utama atau pusat aktivitas.
                             </p>
                         </div>
 
                         <div class="mt-6">
                             <h2 class="text-xl font-semibold mb-2 text-gray-700">Detail Cluster</h2>
                             <div class="grid grid-cols-1 gap-4">
-    """
-    # Generate cluster details statically
-    for stat in cluster_stats:
-        html_content += f"""
-                                <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
-                                    <h3 class="text-lg font-semibold text-gray-700">Cluster {stat['cluster']}</h3>
-                                    <p class="text-gray-600">
-                                        <strong>Jumlah Peristiwa:</strong> {stat['count']}<br>
-                                        <strong>Rata-rata Durasi:</strong> {stat['avg_duration']} detik<br>
-                                        <strong>Rata-rata Jarak Tempuh:</strong> {stat['avg_mileage']} km<br>
-                                        <strong>Tipe Peristiwa Terbanyak:</strong> {stat['most_common_type']}<br>
-                                        <strong>Lokasi Terbanyak:</strong> {stat['most_common_location']}
-                                    </p>
-                                </div>
-        """
-    html_content += f"""
-                            </div>
-                        </div>
-
-                        <div class="mt-6">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Kesimpulan</h2>
-                            <p class="text-gray-600">
-                                Clustering K-Means mengungkapkan pola yang signifikan dalam pergerakan kendaraan. Lokasi-lokasi utama dan tipe peristiwa telah diidentifikasi, memberikan wawasan tentang perilaku kendaraan. Cluster yang dihasilkan menunjukkan variasi dalam durasi perjalanan, jarak tempuh, dan preferensi lokasi.
-                            </p>
-                        </div>
-
-                        <div class="mt-6">
-                            <h2 class="text-xl font-semibold mb-2 text-gray-700">Rekomendasi</h2>
-                            <p class="text-gray-600">
-                                1. <strong>Optimasi Rute:</strong> Fokuskan pada lokasi dengan frekuensi tinggi seperti {clean_string(location_chart_data[0]['location'] if location_chart_data else 'Tidak ada data')} untuk mengoptimalkan rute dan mengurangi kemacetan.<br>
-                                2. <strong>Analisis Lebih Lanjut:</strong> Gunakan data koordinat spasial untuk analisis yang lebih mendalam tentang pola pergerakan.<br>
-                                3. <strong>Pemantauan Anomali:</strong> Perhatikan cluster dengan durasi atau jarak tempuh yang sangat tinggi untuk mendeteksi potensi anomali, seperti perjalanan yang tidak efisien.
-                            </p>
-                        </div>
                     `;
 
                     createBarChart('type-chart-canvas', typeChartData, 'type', '#6366f1');
@@ -479,37 +469,73 @@ def generate_html_report(data, le_type, le_location, stats):
     </body>
     </html>
     """
-    
-    with open("vehicle_tracking_report kmeans.html", "w", encoding="utf-8") as f:
+
+    # Generate cluster details statically in Python
+    cluster_html = ""
+    for stat in cluster_stats:
+        cluster_html += f"""
+            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                <h3 class="text-lg font-semibold text-gray-700">Cluster {stat['cluster']}</h3>
+                <p class="text-gray-600">
+                    <strong>Jumlah Peristiwa:</strong> {stat['count']}<br>
+                    <strong>Rata-rata Durasi:</strong> {stat['avg_duration']} detik<br>
+                    <strong>Rata-rata Jarak Tempuh:</strong> {stat['avg_mileage']} km<br>
+                    <strong>Tipe Peristiwa Terbanyak:</strong> {stat['most_common_type']}<br>
+                    <strong>Lokasi Terbanyak:</strong> {stat['most_common_location']}
+                </p>
+            </div>
+        """
+    html_content += cluster_html + f"""
+        </div>
+    </div>
+
+    <div class="mt-6">
+        <h2 class="text-xl font-semibold mb-2 text-gray-700">Kesimpulan</h2>
+        <p class="text-gray-600">
+            Clustering K-Means mengungkapkan pola yang signifikan dalam pergerakan kendaraan. Lokasi-lokasi utama dan tipe peristiwa telah diidentifikasi, memberikan wawasan tentang perilaku kendaraan. Cluster yang dihasilkan menunjukkan variasi dalam waktu dan jarak tempuh, serta preferensi lokasi yang berbeda.
+        </p>
+    </div>
+
+    <div class="mt-6">
+        <h2 class="text-xl font-semibold mb-2 text-gray-700">Rekomendasi</h2>
+        <p class="text-gray-600">
+            1. <strong>Optimasi Rute:</strong> Fokuskan pada lokasi dengan frekuensi tinggi seperti {top_location} untuk mengoptimalkan rute dan mengurangi kemacetan.<br>
+            2. <strong>Analisis Lebih Lanjut:</strong> Gunakan data koordinat spasial untuk analisis yang lebih mendalam tentang pola pergerakan.<br>
+            3. <strong>Pemantauan Anomali:</strong> Perhatikan cluster dengan durasi atau jarak tempuh yang sangat tinggi untuk mendeteksi potensi anomali, seperti perjalanan yang tidak efisien.
+        </p>
+    </div>
+    """
+
+    with open("vehicle_tracking_report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
     print("Pembuatan laporan HTML selesai.")
     return html_content
 
 # Main execution
 def main():
-    print("Starting vehicle tracking analysis...")
+    print("Memulai analisis pelacakan kendaraan...")
     
     # Langkah 1: Fetch data
     data = fetch_data_from_snowflake()
     if data is None:
-        print("Failed to fetch data. Exiting.")
+        print("Gagal mengambil data. Keluar.")
         return
     
     # Langkah 2: Preprocess data
-    processed_data, le_type, le_location = preprocess_data(data)
+    processed_data, le_type, le_location, stats = preprocess_data(data)
     if processed_data is None:
-        print("Failed to preprocess data. Exiting.")
+        print("Gagal memproses data. Keluar.")
         return
     
     # Langkah 3: Apply clustering
-    clustered_data = apply_dbscan(processed_data)
+    clustered_data = apply_kmeans(processed_data)
     if clustered_data is None:
-        print("Failed to apply clustering. Exiting.")
+        print("Gagal menerapkan clustering. Keluar.")
         return
     
     # Langkah 4: Generate report
-    generate_html_report(clustered_data, le_type, le_location)
-    print("Vehicle tracking analysis completed.")
+    generate_html_report(clustered_data, le_type, le_location, stats)
+    print("Analisis pelacakan kendaraan selesai.")
 
 if __name__ == "__main__":
     main()
