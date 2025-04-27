@@ -66,16 +66,16 @@ Berikut adalah persyaratan perangkat lunak dan perangkat keras untuk menjalankan
 ### Perangkat Lunak
 - **Python**: Versi 3.8 atau lebih baru
 - **Dependensi Python** (tercantum dalam [`requirements.txt`](./requirements.txt)):
-  - `opencv-python>=4.5.5`
-  - `torch>=1.8.0`
-  - `ultralytics>=8.0.0`
-  - `filterpy>=1.4.5`
+  - `opencv-python`
+  - `torch --index-url https://download.pytorch.org/whl/cu118`
+  - `ultralytics`
+  - `filterpy`
   - `PyQt5>=5.15.6`
-  - `snowflake-connector-python>=2.7.0`
-  - `numpy>=1.21.0`
-  - `pandas>=1.3.0`
-  - `scikit-learn>=1.0.0`
-  - `tqdm>=4.62.0`
+  - `snowflake-connector-python`
+  - `numpy`
+  - `pandas`
+  - `scikit-learn`
+  - `tqdm`
 - **Sistem Operasi**: Windows, Linux, atau macOS
 - **Browser**: Untuk melihat laporan HTML (misalnya, Chrome, Firefox)
 - **Snowflake Account**: Akses ke database Snowflake dengan kredensial yang valid (untuk Soal 3)
