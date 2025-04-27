@@ -121,7 +121,7 @@ class SimpleFruitDetectionGUI(QMainWindow):
         self.frame_count = 0
         self.start_time = time.time()
         self.line_y_ratio = 0.5
-        self.process_frame_interval = 1
+        self.process_frame_interval = 30
         self.model = None
         self.video_fps = 30
         self.total_frames = 0
