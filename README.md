@@ -258,13 +258,13 @@ project_directory/
   - [**Processed Video (Inference Every Frame)**](https://youtu.be/uu9BNt9p-cM):
     - Pratinjau (klik untuk memutar di YouTube):  
       [![](https://img.youtube.com/vi/uu9BNt9p-cM/0.jpg)](https://youtu.be/uu9BNt9p-cM)
-    - Video Player Lokal: Lihat di [Video Player HTML](./video_player.html) untuk pemutaran file lokal (hanya berfungsi di platform yang mendukung HTML, seperti GitHub Pages).
+    
     - Deskripsi: Menunjukkan hasil inference dengan pemrosesan setiap frame, memberikan pelacakan yang lebih halus dan akurat. [Unduh file lokal](./video/precessed-1-frame.mp4).
       
   - [**Processed Video (Inference Every 30 Frames)**](https://youtu.be/KJyNu4lUbdk):
     - Pratinjau (klik untuk memutar di YouTube):  
       [![](https://img.youtube.com/vi/KJyNu4lUbdk/0.jpg)](https://youtu.be/KJyNu4lUbdk)
-    - Video Player Lokal: Lihat di [Video Player HTML](./video_player.html) untuk pemutaran file lokal (hanya berfungsi di platform yang mendukung HTML, seperti GitHub Pages).
+    
     - Deskripsi: Menunjukkan hasil inference sesuai spesifikasi awal (setiap 30 frame, ~1 detik pada 30 FPS), yang mungkin memiliki pelacakan kurang akurat tetapi lebih hemat sumber daya. [Unduh file lokal](./video/precessed-30-frame.mp4).
       
 - **Performa**:
