@@ -70,7 +70,7 @@ Berikut adalah persyaratan perangkat lunak dan perangkat keras untuk menjalankan
   - `torch --index-url https://download.pytorch.org/whl/cu118`
   - `ultralytics`
   - `filterpy`
-  - `PyQt5>=5.15.6`
+  - `PyQt5`
   - `snowflake-connector-python`
   - `numpy`
   - `pandas`
